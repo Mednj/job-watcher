@@ -55,3 +55,44 @@ def test_remote_requests_require_access_token(tmp_path):
     settings = Settings(database=str(tmp_path / "remote.sqlite3"))
     with TestClient(create_app(settings, run_monitor=False), client=("203.0.113.1", 123)) as client:
         assert client.get("/api/status").status_code == 403
+
+
+def test_application_status_persists_and_is_independent_of_delivery(tmp_path):
+    from app.models import Job, SearchInput
+    from app.store import Store
+
+    database = str(tmp_path / "applications.sqlite3")
+    with TestClient(create_app(Settings(database=database), run_monitor=False)) as client:
+        store = client.app.state.store
+        config = SearchInput(name="IT", sources=["linkedin"], keywords="cloud")
+        search = store.add_search(config)
+        job = Job(
+            "linkedin",
+            "123",
+            "Cloud engineer",
+            "Example",
+            "Paris",
+            "https://www.linkedin.com/jobs/view/123/",
+        )
+        store.record_scan(search["id"], config.for_source("linkedin"), [job], 5)
+        assert (
+            client.patch("/api/jobs/linkedin:123/application", json={"applied": True}).status_code
+            == 200
+        )
+        saved = client.get("/api/jobs").json()[0]
+        assert saved["applied"] is True
+        assert saved["status"] == "pending"
+        store.record_scan(search["id"], config.for_source("linkedin"), [job], 5)
+        assert client.get("/api/jobs").json()[0]["applied"] is True
+        assert (
+            client.patch("/api/jobs/missing/application", json={"applied": True}).status_code == 404
+        )
+        assert (
+            client.patch("/api/jobs/linkedin:123/application", json={"applied": "yes"}).status_code
+            == 422
+        )
+    store = Store(database)
+    assert store.jobs()[0]["applied"] is True
+    store.set_applied(job.key, False)
+    assert store.jobs()[0]["applied"] is False
+    store.close()

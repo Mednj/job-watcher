@@ -1008,3 +1008,16 @@ pre {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+
+.job.applied {
+  background: #f1f2f3;
+  border-color: #d4d7dc;
+}
+.job.applied .job-main,
+.job.applied .source-logo {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.job.applied h3 a {
+  color: #626975;
+}

@@ -42,6 +42,9 @@ class Store:
                 source TEXT PRIMARY KEY, next_request REAL DEFAULT 0
             );
         """)
+        if "applied" not in {row[1] for row in self.db.execute("PRAGMA table_info(jobs)")}:
+            self.db.execute("ALTER TABLE jobs ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
+            self.db.commit()
         # Upgrade existing single-platform searches without losing health or job history.
         with self.db:
             for row in self.db.execute("SELECT * FROM searches").fetchall():
@@ -247,6 +250,7 @@ class Store:
     def decode_job(row):
         data = dict(row)
         data.update(json.loads(data.pop("payload")))
+        data["applied"] = bool(data["applied"])
         return data
 
     def jobs(self, limit=100, source=None, status=None, query=None):
@@ -265,6 +269,11 @@ class Store:
             "SELECT * FROM jobs" + where + " ORDER BY first_seen DESC,key LIMIT ?", [*params, limit]
         )
         return [self.decode_job(row) for row in rows]
+
+    def set_applied(self, key: str, applied: bool):
+        with self.db:
+            result = self.db.execute("UPDATE jobs SET applied=? WHERE key=?", (int(applied), key))
+        return bool(result.rowcount)
 
     def next_delivery(self):
         row = self.db.execute(

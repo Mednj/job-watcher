@@ -138,3 +138,45 @@ def test_job_text_cannot_inject_html(page):
     assert page.locator("#jobs h3 a").inner_text() == malicious
     assert page.locator("#jobs img").count() == 0
     assert page.locator("#jobs h3 a").get_attribute("href") == "#"
+
+
+def test_applied_popup_and_undo(page):
+    import json
+
+    job = {
+        "key": "linkedin:999",
+        "source": "linkedin",
+        "title": "Cloud popup test",
+        "company": "Example",
+        "location": "Paris",
+        "contract": "CDI",
+        "url": "https://www.linkedin.com/jobs/view/999/",
+        "status": "sent",
+        "first_seen": time.time(),
+        "applied": False,
+    }
+    page.route("**/api/jobs?*", lambda route: route.fulfill(json=[job]))
+
+    def update(route):
+        job["applied"] = json.loads(route.request.post_data)["applied"]
+        route.fulfill(json={"key": job["key"], "applied": job["applied"]})
+
+    page.route("**/api/jobs/linkedin%3A999/application", update)
+    page.reload()
+    link = page.get_by_role("link", name="Cloud popup test")
+    link.wait_for()
+    # Keep the test offline while exercising the normal link click handler.
+    link.evaluate('(element) => element.addEventListener("click", event => event.preventDefault())')
+    link.click()
+    page.locator("#application-dialog").wait_for(state="visible")
+    page.get_by_role("button", name="Not yet", exact=True).click()
+    page.locator("#application-dialog").wait_for(state="hidden")
+    assert not job["applied"]
+    link.click()
+    page.get_by_role("button", name="Yes, I applied", exact=True).click()
+    page.locator(".job.applied").wait_for()
+    page.reload()
+    page.locator(".job.applied").wait_for()
+    page.get_by_role("button", name="Undo applied", exact=True).click()
+    page.locator(".job:not(.applied)").wait_for()
+    assert not job["applied"]

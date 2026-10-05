@@ -155,3 +155,7 @@ class Job:
 
     def to_dict(self):
         return asdict(self)
+
+
+class ApplicationUpdate(BaseModel):
+    applied: bool = Field(strict=True)

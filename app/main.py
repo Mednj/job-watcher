@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
-from app.models import SOURCES, SearchInput, Source
+from app.models import SOURCES, ApplicationUpdate, SearchInput, Source
 from app.monitor import Monitor
 from app.store import Store
 from app.telegram import DeliveryError
@@ -90,6 +90,12 @@ def create_app(settings: Settings | None = None, run_monitor=True):
         q: str | None = Query(default=None, max_length=200),
     ):
         return request.app.state.store.jobs(limit, source, status, q)
+
+    @app.patch("/api/jobs/{job_key}/application")
+    async def update_application(job_key: str, update: ApplicationUpdate, request: Request):
+        if not request.app.state.store.set_applied(job_key, update.applied):
+            raise HTTPException(404, "Opportunity not found")
+        return {"key": job_key, "applied": update.applied}
 
     @app.post("/api/searches", status_code=201)
     async def add_search(config: SearchInput, request: Request):

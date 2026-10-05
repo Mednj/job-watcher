@@ -429,6 +429,21 @@ TELEGRAM_CHAT_ID=your_chat_id</pre>
         </div>
       </form>
     </dialog>
+    <dialog id="application-dialog" aria-labelledby="application-title">
+      <h2 id="application-title">Did you apply?</h2>
+      <p id="application-job" class="muted"></p>
+      <p>
+        You can confirm now or leave this popup open and answer after submitting
+        your application.
+      </p>
+      <div class="dialog-actions">
+        <button class="secondary" id="application-no">Not yet</button>
+        <button class="primary" id="application-yes">Yes, I applied</button>
+        <button class="text-button" data-close="application-dialog">
+          Decide later
+        </button>
+      </div>
+    </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

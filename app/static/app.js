@@ -170,7 +170,7 @@ function renderJobs() {
         )
           ? job.url
           : "#";
-      return `<article class="job">${logo(job.source)}<div class="job-main"><h3><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}</div><div class="job-right"><span class="badge ${badge[1]}">${badge[0]}</span><small>Found ${esc(age(job.first_seen))}</small><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
+      return `<article class="job${job.applied ? " applied" : ""}">${logo(job.source)}<div class="job-main"><h3><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}</div><div class="job-right">${job.applied ? '<span class="badge idle">Applied</span><button class="text-button" data-job-undo="' + esc(job.key) + '">Undo applied</button>' : ""}<span class="badge ${badge[1]}">${badge[0]}</span><small>Found ${esc(age(job.first_seen))}</small><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
     })
     .join("");
 }
@@ -374,3 +374,45 @@ refresh();
 setInterval(() => {
   if (!document.hidden && !$("auth-dialog").open) refresh();
 }, 5000);
+
+let applicationKey = null;
+document.addEventListener("click", async (event) => {
+  const link = event.target.closest("[data-job-open]");
+  if (link && link.getAttribute("href") !== "#") {
+    const job = state.jobs.find((item) => item.key === link.dataset.jobOpen);
+    if (job && !job.applied) {
+      applicationKey = job.key;
+      $("application-job").textContent = `${job.title} · ${job.company}`;
+      if (!$("application-dialog").open) $("application-dialog").showModal();
+    }
+  }
+  const undo = event.target.closest("[data-job-undo]");
+  if (undo) await saveApplication(undo.dataset.jobUndo, false);
+});
+async function saveApplication(key, applied) {
+  try {
+    await api(`jobs/${encodeURIComponent(key)}/application`, {
+      method: "PATCH",
+      body: JSON.stringify({ applied }),
+    });
+    const job = state.jobs.find((item) => item.key === key);
+    if (job) job.applied = applied;
+    renderJobs();
+    toast(applied ? "Marked as applied." : "Marked as not applied.");
+    return true;
+  } catch (error) {
+    toast(error.message, true);
+    return false;
+  }
+}
+for (const [id, applied] of [
+  ["application-yes", true],
+  ["application-no", false],
+]) {
+  $(id).addEventListener("click", async () => {
+    $("application-yes").disabled = $("application-no").disabled = true;
+    if (await saveApplication(applicationKey, applied))
+      $("application-dialog").close();
+    $("application-yes").disabled = $("application-no").disabled = false;
+  });
+}
