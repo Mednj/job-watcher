@@ -151,7 +151,8 @@
           </div>
           <div class="info-note">
             Try <b>cloud</b>, <b>DevOps</b>, or <b>data</b>. Use <b>IT</b> for a
-            broader technology search. Add one search per platform.
+            broader technology search. Choose one or both websites in the same
+            search.
           </div>
           <div id="searches" class="searches-list"></div>
           <p class="footnote">
@@ -240,12 +241,18 @@
             placeholder="Cloud · Paris · Alternance"
         /></label>
         <div class="form-row">
+          <fieldset class="platform-picker">
+            <legend>Websites</legend>
+            <label class="checkbox-row"
+              ><input type="checkbox" id="search-linkedin" checked />
+              LinkedIn</label
+            >
+            <label class="checkbox-row"
+              ><input type="checkbox" id="search-hellowork" checked />
+              HelloWork</label
+            >
+          </fieldset>
           <label
-            >Platform<select id="search-source">
-              <option value="linkedin">LinkedIn</option>
-              <option value="hellowork">HelloWork</option>
-            </select></label
-          ><label
             >Contract<select id="search-contract">
               <option value="any">Any contract</option>
               <option value="Alternance">Alternance</option>

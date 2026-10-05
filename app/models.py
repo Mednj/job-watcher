@@ -3,14 +3,15 @@ import unicodedata
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Source = Literal["linkedin", "hellowork"]
 
 
 class SearchInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    source: Source
+    sources: list[Source] = Field(default_factory=lambda: ["linkedin", "hellowork"], min_length=1)
+    source: Source | None = Field(default=None, exclude=True)
     keywords: str = Field(min_length=1, max_length=200)
     location: str = Field(default="France", min_length=1, max_length=120)
     contract: Literal["any", "CDI", "CDD", "Alternance", "Stage", "Freelance"] = "any"
@@ -18,6 +19,21 @@ class SearchInput(BaseModel):
     exclude_keywords: list[str] = Field(default_factory=list, max_length=30)
     interval_seconds: int = Field(default=60, ge=30, le=3600)
     enabled: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_source(cls, value):
+        if isinstance(value, dict) and "sources" not in value and value.get("source"):
+            value = {**value, "sources": [value["source"]]}
+        return value
+
+    @field_validator("sources")
+    @classmethod
+    def unique_sources(cls, value):
+        return list(dict.fromkeys(value))
+
+    def for_source(self, source: Source):
+        return self.model_copy(update={"source": source})
 
     @field_validator("name", "keywords", "location")
     @classmethod

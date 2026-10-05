@@ -30,12 +30,42 @@ class Store:
                 search_id INTEGER REFERENCES searches(id) ON DELETE CASCADE,
                 job_key TEXT REFERENCES jobs(key), PRIMARY KEY(search_id, job_key)
             );
+            CREATE TABLE IF NOT EXISTS search_sources (
+                search_id INTEGER REFERENCES searches(id) ON DELETE CASCADE,
+                source TEXT NOT NULL, initialized INTEGER DEFAULT 0,
+                next_check REAL DEFAULT 0, last_check REAL, last_success REAL,
+                last_duration_ms REAL, last_count INTEGER DEFAULT 0, last_new INTEGER DEFAULT 0,
+                failures INTEGER DEFAULT 0, error TEXT, PRIMARY KEY(search_id, source)
+            );
             CREATE INDEX IF NOT EXISTS jobs_pending ON jobs(status, next_attempt);
             CREATE TABLE IF NOT EXISTS source_state (
                 source TEXT PRIMARY KEY, next_request REAL DEFAULT 0
             );
         """)
-        self.db.commit()
+        # Upgrade existing single-platform searches without losing health or job history.
+        with self.db:
+            for row in self.db.execute("SELECT * FROM searches").fetchall():
+                config = SearchInput.model_validate(json.loads(row["config"]))
+                for source in config.sources:
+                    self.db.execute(
+                        "INSERT OR IGNORE INTO search_sources VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            row["id"],
+                            source,
+                            row["initialized"],
+                            row["next_check"],
+                            row["last_check"],
+                            row["last_success"],
+                            row["last_duration_ms"],
+                            row["last_count"],
+                            row["last_new"],
+                            row["failures"],
+                            row["error"],
+                        ),
+                    )
+                self.db.execute(
+                    "UPDATE searches SET config=? WHERE id=?", (config.model_dump_json(), row["id"])
+                )
 
     def close(self):
         self.db.close()
@@ -43,10 +73,36 @@ class Store:
     def searches(self):
         result = []
         for row in self.db.execute("SELECT * FROM searches ORDER BY id"):
-            data = dict(row)
-            data.update(json.loads(data.pop("config")))
-            data["initialized"] = bool(data["initialized"])
+            data = {"id": row["id"], **json.loads(row["config"])}
+            states = [
+                dict(x)
+                for x in self.db.execute(
+                    "SELECT * FROM search_sources WHERE search_id=? ORDER BY source", (row["id"],)
+                )
+            ]
+            for item in states:
+                item.pop("search_id")
+                item["initialized"] = bool(item["initialized"])
+            data["source_statuses"] = states
+            data["initialized"] = all(x["initialized"] for x in states)
+            for key in ("last_count", "last_new", "failures"):
+                data[key] = sum(x[key] for x in states)
+            for key in ("last_check", "last_success", "last_duration_ms"):
+                values = [x[key] for x in states if x[key] is not None]
+                data[key] = max(values) if values else None
+            data["next_check"] = min((x["next_check"] for x in states), default=0)
+            data["error"] = (
+                "; ".join(f"{x['source']}: {x['error']}" for x in states if x["error"]) or None
+            )
             result.append(data)
+        return result
+
+    def searches_for_source(self, source):
+        result = []
+        for search in self.searches():
+            for status in search["source_statuses"]:
+                if status["source"] == source:
+                    result.append({**search, **status})
         return result
 
     def search(self, search_id):
@@ -57,20 +113,38 @@ class Store:
             cursor = self.db.execute(
                 "INSERT INTO searches(config) VALUES (?)", (config.model_dump_json(),)
             )
-        return self.search(cursor.lastrowid)
+            search_id = cursor.lastrowid
+            for source in config.sources:
+                self.db.execute(
+                    "INSERT INTO search_sources(search_id,source) VALUES (?,?)", (search_id, source)
+                )
+        return self.search(search_id)
 
     def update_search(self, search_id, config: SearchInput):
         old = self.search(search_id)
         if not old:
             return None
-        # A changed scope resets first-scan health; pause/resume preserves it.
-        fields = ["source", "keywords", "location", "contract", "experience", "exclude_keywords"]
+        fields = ["keywords", "location", "contract", "experience", "exclude_keywords"]
         changed = any(old[k] != config.model_dump()[k] for k in fields)
         with self.db:
             self.db.execute(
-                "UPDATE searches SET config=?, initialized=?, next_check=0, failures=0, error=NULL "
-                "WHERE id=?",
-                (config.model_dump_json(), 0 if changed else old["initialized"], search_id),
+                "UPDATE searches SET config=? WHERE id=?", (config.model_dump_json(), search_id)
+            )
+            for source in old["sources"]:
+                if source not in config.sources:
+                    self.db.execute(
+                        "DELETE FROM search_sources WHERE search_id=? AND source=?",
+                        (search_id, source),
+                    )
+            for source in config.sources:
+                self.db.execute(
+                    "INSERT OR IGNORE INTO search_sources(search_id,source) VALUES (?,?)",
+                    (search_id, source),
+                )
+            self.db.execute(
+                "UPDATE search_sources SET initialized=CASE WHEN ? THEN 0 ELSE initialized END,"
+                "next_check=0,failures=0,error=NULL WHERE search_id=?",
+                (changed, search_id),
             )
         return self.search(search_id)
 
@@ -80,7 +154,9 @@ class Store:
 
     def request_check(self, search_id):
         with self.db:
-            self.db.execute("UPDATE searches SET next_check=0 WHERE id=?", (search_id,))
+            self.db.execute(
+                "UPDATE search_sources SET next_check=0 WHERE search_id=?", (search_id,)
+            )
 
     def source_ready_at(self, source):
         row = self.db.execute(
@@ -101,7 +177,10 @@ class Store:
         # Ignore a result if its search was deleted, paused or changed while the request ran.
         if not current or not current["enabled"]:
             return 0
-        if SearchInput.model_validate(current) != config:
+        if (
+            config.source not in current["sources"]
+            or SearchInput.model_validate(current).for_source(config.source) != config
+        ):
             return 0
         now = time.time()
         new_count = 0
@@ -129,8 +208,9 @@ class Store:
                     "INSERT OR IGNORE INTO search_jobs VALUES (?,?)", (search_id, job.key)
                 )
             self.db.execute(
-                "UPDATE searches SET initialized=1,last_check=?,last_success=?,next_check=?,"
-                "last_duration_ms=?,last_count=?,last_new=?,failures=0,error=NULL WHERE id=?",
+                "UPDATE search_sources SET initialized=1,last_check=?,last_success=?,next_check=?,"
+                "last_duration_ms=?,last_count=?,last_new=?,failures=0,error=NULL "
+                "WHERE search_id=? AND source=?",
                 (
                     now,
                     now,
@@ -139,12 +219,16 @@ class Store:
                     len(jobs),
                     new_count,
                     search_id,
+                    config.source,
                 ),
             )
         return new_count
 
-    def record_failure(self, search_id, error, retry_after=None):
-        current = self.search(search_id)
+    def record_failure(self, search_id, error, retry_after=None, source=None):
+        parent = self.search(search_id)
+        if parent and source is None:
+            source = parent["sources"][0]
+        current = next((x for x in self.searches_for_source(source) if x["id"] == search_id), None)
         if not current:
             return 60
         failures = current["failures"] + 1
@@ -153,8 +237,9 @@ class Store:
         )
         with self.db:
             self.db.execute(
-                "UPDATE searches SET last_check=?,next_check=?,failures=?,error=? WHERE id=?",
-                (time.time(), time.time() + delay, failures, error, search_id),
+                "UPDATE search_sources SET last_check=?,next_check=?,failures=?,error=? "
+                "WHERE search_id=? AND source=?",
+                (time.time(), time.time() + delay, failures, error, search_id, source),
             )
         return delay
 

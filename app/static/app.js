@@ -96,7 +96,12 @@ function renderStatus() {
     `UPDATED ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
   $("connections").innerHTML = ["linkedin", "hellowork"]
     .map((source) => {
-      const searches = active.filter((x) => x.source === source),
+      const searches = active
+          .filter((x) => x.sources.includes(source))
+          .map((x) => ({
+            ...x,
+            ...x.source_statuses.find((t) => t.source === source),
+          })),
         errors = searches.filter((x) => x.error),
         latest = Math.max(0, ...searches.map((x) => x.last_success || 0));
       const badge = errors.length
@@ -160,14 +165,19 @@ function renderSearches() {
   const searches = state.status.searches;
   $("searches").innerHTML = searches.length
     ? searches
-        .map(
-          (s) =>
-            `<article class="search-card"><div class="search-card-head">${logo(s.source)}<div><h3>${esc(s.name)}</h3><span class="muted">${sourceName(s.source)}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "First scan pending"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · ${s.experience === "any" ? "Any experience" : s.experience === "entry" ? "Entry level" : "Experienced"} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p><div class="search-health">Last success: ${esc(date(s.last_success))} · ${s.last_count} results · ${s.last_new} new alerts${s.last_duration_ms != null ? ` · ${(s.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(s.next_check, state.status.sources.find((x) => x.source === s.source)?.next_request || 0)))}` : "Monitoring paused"}</div>${s.error ? `<p class="search-error">${esc(s.error)}</p>` : ""}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check now</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`,
-        )
+        .map((s) => {
+          const health = s.source_statuses
+            .map(
+              (t) =>
+                `<div class="search-health"><b>${sourceName(t.source)}</b> · ${!s.enabled ? "Paused" : t.error ? "Needs attention" : t.initialized ? "Watching" : "First scan pending"}<br>Last success: ${esc(date(t.last_success))} · ${t.last_count} matches · ${t.last_new} new alerts${t.last_duration_ms != null ? ` · ${(t.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(t.next_check, state.status.sources.find((x) => x.source === t.source)?.next_request || 0)))}` : ""}${t.error ? `<p class="search-error">${esc(t.error)}</p>` : ""}</div>`,
+            )
+            .join("");
+          return `<article class="search-card"><div class="search-card-head">${s.sources.map(logo).join("")}<div><h3>${esc(s.name)}</h3><span class="muted">${s.sources.map(sourceName).join(" + ")}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "Starting"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p>${health}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check all websites</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`;
+        })
         .join("")
     : empty(
         "A focused search is a faster start.",
-        "Choose your keyword and contract, then add a search for each platform you want to watch.",
+        "Choose your keyword and contract, then select the websites to monitor together.",
       );
 }
 async function refresh() {
@@ -203,7 +213,6 @@ function searchDialog(search = null) {
     : "Create a search";
   for (const field of [
     "name",
-    "source",
     "keywords",
     "location",
     "contract",
@@ -214,14 +223,17 @@ function searchDialog(search = null) {
   $("search-interval").value = search?.interval_seconds || "60";
   $("search-exclusions").value = search?.exclude_keywords.join(", ") || "";
   $("search-enabled").checked = search?.enabled ?? true;
+  for (const source of ["linkedin", "hellowork"])
+    $(`search-${source}`).checked = search
+      ? search.sources.includes(source)
+      : true;
   updateContractNote();
   $("search-dialog").showModal();
 }
 function updateContractNote() {
-  $("contract-note").textContent =
-    $("search-source").value === "linkedin"
-      ? "LinkedIn uses French contract names as search keywords. Exact contract filtering is available on HelloWork."
-      : "HelloWork applies native contract filters. Experience categories use the platform’s own filters.";
+  $("contract-note").textContent = $("search-linkedin").checked
+    ? "LinkedIn uses French contract names as search keywords. Exact contract filtering is available on HelloWork."
+    : "HelloWork applies native contract filters. Experience categories use the platform’s own filters.";
 }
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
@@ -272,19 +284,26 @@ document.addEventListener("click", async (event) => {
     }
   }
 });
-$("search-source").addEventListener("change", updateContractNote);
+for (const source of ["linkedin", "hellowork"])
+  $(`search-${source}`).addEventListener("change", updateContractNote);
 $("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const config = {};
   for (const field of [
     "name",
-    "source",
     "keywords",
     "location",
     "contract",
     "experience",
   ])
     config[field] = $(`search-${field}`).value.trim();
+  config.sources = ["linkedin", "hellowork"].filter(
+    (source) => $(`search-${source}`).checked,
+  );
+  if (!config.sources.length) {
+    toast("Select at least one website.", true);
+    return;
+  }
   config.exclude_keywords = $("search-exclusions")
     .value.split(",")
     .map((x) => x.trim())

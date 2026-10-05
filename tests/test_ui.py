@@ -80,7 +80,8 @@ def page(ui_server):
 def test_dashboard_create_edit_remove_search(page):
     page.get_by_role("button", name="＋ New search", exact=True).first.click()
     page.locator("#search-name").fill("UI smoke test")
-    page.locator("#search-source").select_option("hellowork")
+    page.locator("#search-linkedin").uncheck()
+    assert page.locator("#search-hellowork").is_checked()
     page.locator("#search-contract").select_option("CDD")
     page.locator("#search-keywords").fill("data")
     page.locator("#search-location").fill("Paris")
@@ -91,6 +92,8 @@ def test_dashboard_create_edit_remove_search(page):
     page.get_by_role("heading", name="UI smoke test", exact=True).wait_for()
     page.get_by_text("Paused", exact=True).wait_for()
     page.get_by_role("button", name="Edit", exact=True).click()
+    assert not page.locator("#search-linkedin").is_checked()
+    page.locator("#search-linkedin").check()
     assert page.locator("#search-contract").input_value() == "CDD"
     page.locator("#search-name").fill("Edited search")
     page.locator("#search-contract").select_option("CDI")

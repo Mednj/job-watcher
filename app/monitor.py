@@ -53,7 +53,9 @@ class Monitor:
             await self.telegram_client.aclose()
 
     async def scan(self, search):
-        config = SearchInput.model_validate(search)
+        config = SearchInput.model_validate(search).for_source(
+            search.get("source") or search["sources"][0]
+        )
         start = time.perf_counter()
         try:
             jobs = await self.fetcher(self.client, config)
@@ -65,17 +67,31 @@ class Monitor:
         except SourceError as exc:
             current = self.store.search(search["id"])
             delay = max(exc.retry_after or 0, config.interval_seconds * 2)
-            if current and current["enabled"] and SearchInput.model_validate(current) == config:
-                delay = self.store.record_failure(search["id"], str(exc), exc.retry_after)
+            if (
+                current
+                and current["enabled"]
+                and config.source in current["sources"]
+                and SearchInput.model_validate(current).for_source(config.source) == config
+            ):
+                delay = self.store.record_failure(
+                    search["id"], str(exc), exc.retry_after, config.source
+                )
             # A platform restriction applies to all searches on that source.
             if exc.retry_after:
                 self.store.set_source_ready(config.source, time.time() + delay)
         except Exception:
             logger.error("Unexpected source error; search id=%s", search["id"])
             current = self.store.search(search["id"])
-            if current and current["enabled"] and SearchInput.model_validate(current) == config:
+            if (
+                current
+                and current["enabled"]
+                and config.source in current["sources"]
+                and SearchInput.model_validate(current).for_source(config.source) == config
+            ):
                 self.store.record_failure(
-                    search["id"], "Unexpected source error; inspect the service"
+                    search["id"],
+                    "Unexpected source error; inspect the service",
+                    source=config.source,
                 )
         finally:
             self.store.set_source_ready(
@@ -92,7 +108,7 @@ class Monitor:
                 now = time.time()
                 candidates = [
                     s
-                    for s in self.store.searches()
+                    for s in self.store.searches_for_source(source)
                     if s["source"] == source and s["enabled"] and s["next_check"] <= now
                 ]
                 if candidates and self.store.source_ready_at(source) <= now:

@@ -988,3 +988,23 @@ pre {
     font-size: 9px;
   }
 }
+
+.platform-picker {
+  margin: 15px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  min-width: 0;
+}
+.platform-picker legend {
+  font-size: 11px;
+  color: #cdd6d3;
+}
+.platform-picker .checkbox-row {
+  margin: 8px 0;
+}
+.search-health + .search-health {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}

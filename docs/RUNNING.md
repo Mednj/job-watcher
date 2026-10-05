@@ -15,7 +15,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000. Create a search for each platform using a keyword
+Open http://127.0.0.1:8000. Create one search across selected platforms using a keyword
 (`cloud`, `DevOps`, `data`, or `IT`), location, and contract. Searches default to
 France and a 60-second interval. There are no preconfigured searches or example
 jobs mixed into the real feed. An empty feed is normal until a successful scan.
@@ -152,3 +152,14 @@ $env:RUN_UI_TESTS = '1'
 
 Alternatively, set `BROWSER_EXECUTABLE` to an installed Chrome or Edge executable
 to run headless tests without downloading Chromium.
+
+## Multiple websites per search
+
+Select LinkedIn, HelloWork, or both. Search criteria are shared; each platform
+has independent status, scheduling, and backoff. Check now checks all selected
+websites. Adding a platform starts its first scan; removing one stops monitoring
+while preserving job history. Existing searches retain their original websites.
+Edit them to add another website.
+
+The API accepts `sources: ["linkedin", "hellowork"]`. The legacy `source` field
+still works for single-platform clients. Empty source lists are rejected.
