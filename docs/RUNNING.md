@@ -163,3 +163,11 @@ Edit them to add another website.
 
 The API accepts `sources: ["linkedin", "hellowork"]`. The legacy `source` field
 still works for single-platform clients. Empty source lists are rejected.
+
+### Expanded platform coverage
+
+One search can select LinkedIn, HelloWork, Welcome to the Jungle, France Travail (formerly Pôle emploi), APEC, Glassdoor, Indeed, JobTeaser, and Monster.
+
+Welcome to the Jungle and France Travail public searches were verified locally. Welcome to the Jungle currently returns a ranked window of 10 results; France Travail returns 20. These integrations do not guarantee discovery of every new listing. Welcome to the Jungle uses native contract filtering; additional contract and city matching are local. City names must match the returned location text. Experience filters on these two integrations are currently unavailable and report an explicit error. France Travail alternance detection relies on the offer title, so listings without that wording can be missed.
+
+APEC, Glassdoor, Indeed, JobTeaser, and Monster returned access challenges during validation. Their dashboard entries are availability placeholders, not functioning scrapers. Selecting them reports an integration-unavailable error with backoff, independently of working sources. Approved feeds, APIs or another verified integration are needed before these entries can deliver jobs. No CAPTCHA bypass is implemented. Existing saved searches retain their selected platforms; edit a search to add the new ones.

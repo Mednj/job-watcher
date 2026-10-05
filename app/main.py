@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
-from app.models import SearchInput
+from app.models import SOURCES, SearchInput, Source
 from app.monitor import Monitor
 from app.store import Store
 from app.telegram import DeliveryError
@@ -77,7 +77,7 @@ def create_app(settings: Settings | None = None, run_monitor=True):
             "searches": searches,
             "sources": [
                 {"source": source, "next_request": store.source_ready_at(source)}
-                for source in ("linkedin", "hellowork")
+                for source in SOURCES
             ],
         }
 
@@ -85,7 +85,7 @@ def create_app(settings: Settings | None = None, run_monitor=True):
     async def jobs(
         request: Request,
         limit: int = Query(default=100, ge=1, le=500),
-        source: Literal["linkedin", "hellowork"] | None = None,
+        source: Source | None = None,
         status: Literal["baseline", "pending", "sent", "failed"] | None = None,
         q: str | None = Query(default=None, max_length=200),
     ):

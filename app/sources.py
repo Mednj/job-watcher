@@ -116,6 +116,10 @@ def search_url(search: SearchInput) -> str:
 
 
 async def fetch_jobs(client: httpx.AsyncClient, search: SearchInput) -> list[Job]:
+    if search.source not in ("linkedin", "hellowork"):
+        from app.providers import fetch_extended
+
+        return await fetch_extended(client, search)
     try:
         response = await client.get(search_url(search))
     except httpx.HTTPError:

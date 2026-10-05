@@ -14,10 +14,21 @@ const esc = (value) =>
         c
       ],
   );
-const sourceName = (source) =>
-  source === "linkedin" ? "LinkedIn" : "HelloWork";
+const sourceNames = {
+  linkedin: "LinkedIn",
+  hellowork: "HelloWork",
+  apec: "APEC",
+  glassdoor: "Glassdoor",
+  indeed: "Indeed",
+  jobteaser: "JobTeaser",
+  monster: "Monster",
+  wttj: "Welcome to the Jungle",
+  francetravail: "France Travail (Pôle emploi)",
+};
+const sources = Object.keys(sourceNames);
+const sourceName = (source) => sourceNames[source] || source;
 const logo = (source) =>
-  `<span class="source-logo ${esc(source)}">${source === "linkedin" ? "in" : "hw"}</span>`;
+  `<span class="source-logo ${esc(source)}">${esc(sourceName(source).slice(0, 2))}</span>`;
 const date = (timestamp) =>
   timestamp
     ? new Date(timestamp * 1000).toLocaleString([], {
@@ -94,7 +105,7 @@ function renderStatus() {
   $("worker-dot").classList.toggle("error", !s.monitor_running);
   $("updated").textContent =
     `UPDATED ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-  $("connections").innerHTML = ["linkedin", "hellowork"]
+  $("connections").innerHTML = sources
     .map((source) => {
       const searches = active
           .filter((x) => x.sources.includes(source))
@@ -154,7 +165,9 @@ function renderJobs() {
     .map((job) => {
       const badge = badges[job.status] || ["Unknown", "idle"];
       const safeUrl =
-        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com)\//.test(job.url)
+        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr)\//.test(
+          job.url,
+        )
           ? job.url
           : "#";
       return `<article class="job">${logo(job.source)}<div class="job-main"><h3><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}</div><div class="job-right"><span class="badge ${badge[1]}">${badge[0]}</span><small>Found ${esc(age(job.first_seen))}</small><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
@@ -223,7 +236,7 @@ function searchDialog(search = null) {
   $("search-interval").value = search?.interval_seconds || "60";
   $("search-exclusions").value = search?.exclude_keywords.join(", ") || "";
   $("search-enabled").checked = search?.enabled ?? true;
-  for (const source of ["linkedin", "hellowork"])
+  for (const source of sources)
     $(`search-${source}`).checked = search
       ? search.sources.includes(source)
       : true;
@@ -284,7 +297,7 @@ document.addEventListener("click", async (event) => {
     }
   }
 });
-for (const source of ["linkedin", "hellowork"])
+for (const source of sources)
   $(`search-${source}`).addEventListener("change", updateContractNote);
 $("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -297,9 +310,7 @@ $("search-form").addEventListener("submit", async (event) => {
     "experience",
   ])
     config[field] = $(`search-${field}`).value.trim();
-  config.sources = ["linkedin", "hellowork"].filter(
-    (source) => $(`search-${source}`).checked,
-  );
+  config.sources = sources.filter((source) => $(`search-${source}`).checked);
   if (!config.sources.length) {
     toast("Select at least one website.", true);
     return;

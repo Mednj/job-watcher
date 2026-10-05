@@ -5,7 +5,7 @@ import time
 import httpx
 
 from app.config import Settings
-from app.models import SearchInput
+from app.models import SOURCES, SearchInput
 from app.sources import SourceError, fetch_jobs
 from app.store import Store
 from app.telegram import DeliveryError, Telegram, format_message
@@ -37,9 +37,7 @@ class Monitor:
         self.telegram_client = httpx.AsyncClient(timeout=self.settings.http_timeout)
         self.telegram = Telegram(self.settings, self.telegram_client)
         self.running = True
-        self.tasks = [
-            asyncio.create_task(self.source_loop(source)) for source in ("linkedin", "hellowork")
-        ]
+        self.tasks = [asyncio.create_task(self.source_loop(source)) for source in SOURCES]
         self.tasks.append(asyncio.create_task(self.delivery_loop()))
 
     async def stop(self):

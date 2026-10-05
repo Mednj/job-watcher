@@ -5,7 +5,28 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-Source = Literal["linkedin", "hellowork"]
+Source = Literal[
+    "linkedin",
+    "hellowork",
+    "apec",
+    "glassdoor",
+    "indeed",
+    "jobteaser",
+    "monster",
+    "wttj",
+    "francetravail",
+]
+SOURCES = (
+    "linkedin",
+    "hellowork",
+    "apec",
+    "glassdoor",
+    "indeed",
+    "jobteaser",
+    "monster",
+    "wttj",
+    "francetravail",
+)
 
 
 class SearchInput(BaseModel):
@@ -128,7 +149,7 @@ class Job:
             matched = bool(terms) and all(
                 re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", title) for term in terms
             )
-        if self.source == "hellowork" and search.contract != "any":
+        if self.source in ("hellowork", "wttj", "francetravail") and search.contract != "any":
             matched = matched and normalize(self.contract) == normalize(search.contract)
         return bool(matched)
 
