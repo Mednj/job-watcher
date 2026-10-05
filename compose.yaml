@@ -2,12 +2,33 @@ services:
   watcher:
     build: .
     restart: unless-stopped
+    init: true
     ports:
       - "127.0.0.1:8000:8000"
+      - "127.0.0.1:7900:7900"
     env_file: .env
     environment:
       APP_ACCESS_TOKEN: ${APP_ACCESS_TOKEN:?Set APP_ACCESS_TOKEN in .env before using Docker}
+      JOB_WATCHER_DB: /app/data/jobs.sqlite3
+      JOBTEASER_CDP_ENDPOINT: http://127.0.0.1:9223
     volumes:
-      - watcher-data:/app/data
+      - ./data:/app/data
+  jobteaser-browser:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.browser
+    network_mode: service:watcher
+    depends_on:
+      watcher:
+        condition: service_healthy
+    restart: unless-stopped
+    shm_size: 1gb
+    volumes:
+      - jobteaser-profile:/profile
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9223/json/version"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
 volumes:
-  watcher-data:
+  jobteaser-profile:

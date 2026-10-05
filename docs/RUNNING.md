@@ -181,3 +181,16 @@ Click an opportunity title or “View & apply” in the dashboard to open the li
 The application popup includes “Ban recruiter”. This blocks the listing's company name, since individual recruiter identities are not provided by the sources. Manage the global list in the Blocked recruiters tab: add names manually or remove bans. Matching is exact after normalizing case, accents and whitespace. Blocked companies are excluded across every search and platform, including queued alerts and the existing dashboard feed. History remains stored and reappears if unblocked. Alerts already in transmission cannot be recalled.
 
 JobTeaser now has an optional experimental open-first/CDP browser reader. It is disabled until configured. The dedicated Chrome session and keyword navigation were verified against live results. See [JobTeaser setup and limitations](JOBTEASER.md#experimental-open-first-browser-adapter).
+
+
+### Docker with a dedicated JobTeaser browser
+
+`docker compose up --build -d` runs the app and a separate ordinary Chromium browser. The browser opens JobTeaser before the app attaches. It uses a persisted dedicated Linux profile, independently of your Windows Chrome window. Keep Docker Desktop running; your Windows browser can be closed.
+
+The dashboard is at http://127.0.0.1:8000. Copy `APP_ACCESS_TOKEN` from the local `.env` into its unlock dialog. The browser viewer is at http://127.0.0.1:7900/vnc.html?autoconnect=true&resize=scale. Use it to complete JobTeaser's security checks or login manually. The container session starts fresh; successful access from Windows Chrome does not prove the Linux browser will be accepted.
+
+JobTeaser uses loopback CDP shared between the two services. No debugging port is published. Dashboard and browser viewer ports bind only to host localhost. The browser viewer provides control of the dedicated profile and should remain local.
+
+The database is bind-mounted from `./data`, preserving the existing app history. The browser profile uses the `jobteaser-profile` named volume. Stop the host Python server before starting Compose to avoid port conflicts and duplicate notification workers. `docker compose stop` pauses monitoring; `docker compose up -d` resumes it. Recreating the watcher also requires recreating its browser because they share a network namespace: `docker compose up -d --force-recreate`.
+
+Both services have health checks and restart policies. Browser health means Chromium is reachable, not that JobTeaser has accepted its session. Check the JobTeaser search status in the dashboard for actual access errors. After manually clearing a challenge, request a fresh check. JobTeaser still reads only the first results page.

@@ -25,7 +25,7 @@ Verified live on 2026-10-05 with the user's manually opened dedicated Chrome ses
 
 The browser must be opened normally with a separate profile before automation connects. Keep exactly one JobTeaser search-results tab open and complete any login or security checks manually. The adapter attaches over local CDP, verifies the existing page, navigates to each search using the observed `q` parameter, reads the cards, then disconnects without closing Chrome. It never solves challenges.
 
-Install optional browser dependencies with `.\.venv\Scripts\python.exe -m pip install -r requirements.browser.txt`. The regular Docker image does not include them.
+Install optional browser dependencies with `.\.venv\Scripts\python.exe -m pip install -r requirements.browser.txt`. The Docker app image includes these dependencies.
 
 Open Chrome yourself using PowerShell:
 
@@ -40,3 +40,8 @@ Verified DOM selectors use JobTeaser's `jobad-card` test IDs for titles, company
 Each search now changes the keyword independently. `IT` uses the native keyword `informatique` followed by the app's broader title matching. Only the first page (20 cards in the live test) is read; there is no pagination or guaranteed chronological ordering. Contract and city filters are applied locally to that window. Default France searches require France in the location label, so listings with unspecified/multiple locations can be missed. Experience filtering is unavailable. Recruiter bans, deduplication, applied status and Telegram delivery use the normal shared pipeline.
 
 Browser launch through the agent's terminal was rejected by automatic approval review; the user opened Chrome manually. The successful live test used that session. Expose the debugging port only on loopback and use a dedicated profile, never your everyday profile.
+
+
+## Docker validation
+
+On 2026-10-05 the dedicated ordinary Chromium service opened JobTeaser successfully inside Docker before attachment. Successive native keyword searches returned 16 DevOps and 3 cloud matches in France. The app and browser services were healthy, the browser viewer responded, and the existing database retained four searches and 76 jobs. Docker Desktop must remain running; the Windows Chrome window is no longer required for the containerized app. Use the local browser viewer only if the container session later presents a challenge.
