@@ -1010,14 +1010,21 @@ pre {
 }
 
 .job.applied {
-  background: #f1f2f3;
-  border-color: #d4d7dc;
-}
-.job.applied .job-main,
-.job.applied .source-logo {
-  opacity: 0.55;
-  filter: grayscale(1);
+  background: rgba(184, 242, 207, 0.035);
+  box-shadow: inset 3px 0 0 #729c87;
 }
 .job.applied h3 a {
-  color: #626975;
+  color: #bac8c1;
+}
+.job.applied .source-logo {
+  background: #26332e;
+  color: #a7c7b7;
+}
+.badge.applied-badge {
+  background: #263a30;
+  color: #c0e5d1;
+  border: 1px solid #3c5949;
+}
+.job.applied .job-right > a {
+  color: #a7c7b7;
 }
