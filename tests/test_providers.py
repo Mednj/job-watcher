@@ -44,7 +44,8 @@ def test_public_source_parsers():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", list(RESTRICTED))
-async def test_unavailable_sources_never_succeed_with_zero(source):
+async def test_unavailable_sources_never_succeed_with_zero(source, monkeypatch):
+    monkeypatch.delenv("JOBTEASER_CDP_ENDPOINT", raising=False)
     search = SearchInput(name="test", sources=[source], keywords="devops").for_source(source)
     async with httpx.AsyncClient() as client:
         with pytest.raises(SourceError, match="integration unavailable"):

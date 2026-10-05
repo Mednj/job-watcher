@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import re
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -45,6 +45,43 @@ def parse_page(html, page_url):
     if any(marker in title for marker in ("security", "just a moment", "checkup")):
         raise SourceError("JobTeaser security challenge: complete it manually in the browser", 300)
     jobs = {}
+    cards = soup.select('[data-testid="jobad-card"]')
+    for card in cards:
+        link = card.select_one('h3 a[href*="/job-offers/"]')
+        company = card.select_one('[data-testid="jobad-card-company-name"]')
+        contract = card.select_one('[data-testid="jobad-card-contract"]')
+        location = card.select_one('[data-testid="jobad-card-location"]')
+        url = urljoin(page_url, link.get("href", "")) if link else ""
+        match = re.search(r"/job-offers/([0-9a-f-]{36})(?:-|/|$)", urlparse(url).path)
+        if not link or not company or not location or not contract or not match:
+            raise SourceError("JobTeaser card structure changed; parser needs verification")
+        title_text = link.get_text(" ", strip=True)
+        if not title_text or urlparse(url).hostname != "www.jobteaser.com":
+            raise SourceError("JobTeaser returned an invalid job card")
+        label = next(
+            (
+                text
+                for text in card.stripped_strings
+                if re.match(r"^(il y a|Publié|Publie)", text, re.I)
+            ),
+            "",
+        )
+        jobs[match[1]] = Job(
+            source="jobteaser",
+            source_id=match[1],
+            title=title_text,
+            company=company.get_text(" ", strip=True),
+            location=location.get_text(" ", strip=True),
+            contract=contract.get_text(" ", strip=True).split(" ")[0],
+            url=url,
+            published_label=label,
+        )
+    if cards:
+        return list(jobs.values())
+    if soup.select_one('[data-testid="job-ads-wrapper"]') and re.search(
+        r"(?<![0-9])0\s+offres?", soup.get_text(" ", strip=True)
+    ):
+        return []
 
     def visit(value):
         if isinstance(value, list):
@@ -153,7 +190,18 @@ async def fetch_browser(search):
                     page = pages[0]
                     # Read the already-loaded page first. Do not refresh a manual challenge.
                     parse_page(await page.content(), page.url)
-                    await page.reload(wait_until="domcontentloaded", timeout=25000)
+                    keyword = (
+                        "informatique" if normalize(search.keywords) == "it" else search.keywords
+                    )
+                    url = "https://www.jobteaser.com/fr/job-offers?" + urlencode({"q": keyword})
+                    await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                    await page.wait_for_function(
+                        "document.querySelector('[data-testid=jobad-card]') || "
+                        "/security|just a moment|checkup/i.test(document.title) || "
+                        "(document.querySelector('[data-testid=job-ads-wrapper]') && "
+                        "/(?:^|[^0-9])0\\s+offres?/.test(document.body.innerText))",
+                        timeout=15000,
+                    )
                     jobs = parse_page(await page.content(), page.url)
                 finally:
                     # Disconnect our CDP client; leave the dedicated browser open.
@@ -168,7 +216,10 @@ async def fetch_browser(search):
         if job.matches(search)
         and (search.contract == "any" or normalize(job.contract) == normalize(search.contract))
         and (
-            normalize(search.location) == "france"
-            or normalize(search.location) in normalize(job.location)
+            (normalize(search.location) == "france" and "france" in normalize(job.location))
+            or (
+                normalize(search.location) != "france"
+                and normalize(search.location) in normalize(job.location)
+            )
         )
     ]

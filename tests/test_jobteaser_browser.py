@@ -73,11 +73,14 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
         events.append("read")
         return html
 
-    async def reload(**kwargs):
+    async def reload(*args, **kwargs):
         events.append("reload")
 
     page = SimpleNamespace(
-        url="https://www.jobteaser.com/fr/job-offers", content=content, reload=reload
+        url="https://www.jobteaser.com/fr/job-offers",
+        content=content,
+        goto=reload,
+        wait_for_function=AsyncMock(),
     )
     browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])], close=AsyncMock())
     connect = AsyncMock(return_value=browser)
@@ -90,9 +93,9 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
             pass
 
     monkeypatch.setattr("playwright.async_api.async_playwright", Manager)
-    search = SearchInput(name="Cloud", sources=["jobteaser"], keywords="cloud").for_source(
-        "jobteaser"
-    )
+    search = SearchInput(
+        name="Cloud", sources=["jobteaser"], keywords="cloud", location="Paris"
+    ).for_source("jobteaser")
     if challenge:
         with pytest.raises(SourceError, match="security challenge"):
             await fetch_browser(search)
@@ -102,3 +105,29 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
         assert events == ["read", "reload", "read"]
     connect.assert_awaited_once_with("http://127.0.0.1:9223", timeout=10000, no_defaults=True)
     browser.close.assert_awaited_once()
+
+
+def test_jobteaser_real_card_structure_and_empty_detection():
+    html = """<div data-testid="jobad-card">
+<p data-testid="jobad-card-company-name">Example</p>
+<h3><a href="/fr/job-offers/12345678-1234-1234-1234-123456789abc-cloud">Cloud engineer</a></h3>
+<div data-testid="jobad-card-contract">CDD</div>
+<div data-testid="jobad-card-location">Paris, France</div>
+<span>il y a 5 minutes</span></div>"""
+    job = parse_page(html, "https://www.jobteaser.com/fr/job-offers?q=cloud")[0]
+    assert job.contract == "CDD"
+    assert job.company == "Example"
+    assert job.published_label == "il y a 5 minutes"
+    assert job.published_at is None
+    assert (
+        parse_page(
+            '<div data-testid="job-ads-wrapper">0 offres</div>',
+            "https://www.jobteaser.com/fr/job-offers",
+        )
+        == []
+    )
+    with pytest.raises(SourceError):
+        parse_page(
+            '<div data-testid="job-ads-wrapper">20 offres</div>',
+            "https://www.jobteaser.com/fr/job-offers",
+        )
