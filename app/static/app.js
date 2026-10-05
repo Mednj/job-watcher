@@ -165,7 +165,7 @@ function renderJobs() {
     .map((job) => {
       const badge = badges[job.status] || ["Unknown", "idle"];
       const safeUrl =
-        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr)\//.test(
+        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr|www\.jobteaser\.com)\//.test(
           job.url,
         )
           ? job.url

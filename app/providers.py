@@ -99,6 +99,10 @@ def parse_francetravail(html):
 
 
 async def fetch_extended(client, search: SearchInput):
+    if search.source == "jobteaser":
+        from app.jobteaser_browser import fetch_browser
+
+        return await fetch_browser(search)
     if search.source in RESTRICTED:
         raise SourceError(RESTRICTED[search.source] + "; integration unavailable", 3600)
     if search.experience != "any":

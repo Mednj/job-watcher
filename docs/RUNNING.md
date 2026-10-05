@@ -179,3 +179,5 @@ Click an opportunity title or “View & apply” in the dashboard to open the li
 ### Block recruiters
 
 The application popup includes “Ban recruiter”. This blocks the listing's company name, since individual recruiter identities are not provided by the sources. Manage the global list in the Blocked recruiters tab: add names manually or remove bans. Matching is exact after normalizing case, accents and whitespace. Blocked companies are excluded across every search and platform, including queued alerts and the existing dashboard feed. History remains stored and reappears if unblocked. Alerts already in transmission cannot be recalled.
+
+JobTeaser now has an optional experimental open-first/CDP browser reader. It is disabled until configured and remains unverified on live results. See [JobTeaser setup and limitations](JOBTEASER.md#experimental-open-first-browser-adapter).

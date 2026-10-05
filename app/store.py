@@ -290,7 +290,7 @@ class Store:
         clauses, params = (
             [
                 "NOT EXISTS (SELECT 1 FROM banned_recruiters b "
-            "WHERE b.normalized=normalize_company(json_extract(jobs.payload, '$.company')))"
+                "WHERE b.normalized=normalize_company(json_extract(jobs.payload, '$.company')))"
             ],
             [],
         )
