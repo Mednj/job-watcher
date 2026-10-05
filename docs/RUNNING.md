@@ -22,7 +22,7 @@ jobs mixed into the real feed. An empty feed is normal until a successful scan.
 
 On macOS/Linux, use `python3`, `.venv/bin/python`, and `cp .env.example .env`.
 Keep the service running to keep checking. Close it with Ctrl+C. Search settings,
-job history, baselines, source cooldowns, and unsent alerts survive restarts in
+job history, scan state, source cooldowns, and unsent alerts survive restarts in
 `data/jobs.sqlite3`. Back up the entire `data` directory when the app is stopped.
 
 ## Connect Telegram
@@ -61,9 +61,10 @@ The app does not poll `getUpdates` or register a webhook.
   semantic classification. HelloWork contract labels are also checked locally.
 - Excluded keywords are matched case- and accent-insensitively against the
   title, employer, and location, not the full description.
-- The first successful scan of a new or changed search is a baseline. It saves
-  existing jobs without alerting. Pause/resume preserves the baseline.
-- Subsequent newly discovered source IDs are queued immediately. A job seen
+- The first successful scan queues matching listings immediately, so new searches
+  produce Telegram alerts without waiting for another job to be published.
+  Listings already discovered by another search are not sent twice.
+- Subsequent newly discovered source IDs are also queued immediately. A job seen
   by overlapping searches on the same platform generates one alert. Cross-site
   duplicates are retained: identical titles can represent different vacancies.
 - The app checks only the newest result page (currently about 10–30 listings),

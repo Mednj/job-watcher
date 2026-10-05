@@ -63,7 +63,7 @@ class Store:
         old = self.search(search_id)
         if not old:
             return None
-        # A changed search scope starts a fresh baseline; pause/resume preserves it.
+        # A changed scope resets first-scan health; pause/resume preserves it.
         fields = ["source", "keywords", "location", "contract", "experience", "exclude_keywords"]
         changed = any(old[k] != config.model_dump()[k] for k in fields)
         with self.db:
@@ -116,10 +116,10 @@ class Store:
                         json.dumps(job.to_dict(), ensure_ascii=False),
                         now,
                         now,
-                        "pending" if current["initialized"] else "baseline",
+                        "pending",
                     ),
                 )
-                if cursor.rowcount and current["initialized"]:
+                if cursor.rowcount:
                     new_count += 1
                 self.db.execute(
                     "UPDATE jobs SET last_seen=?,payload=? WHERE key=?",

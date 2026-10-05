@@ -33,12 +33,13 @@ def job(id="1"):
     )
 
 
-def test_baseline_then_only_new_jobs_notify_and_survive_restart(tmp_path):
+def test_first_scan_alerts_then_only_new_jobs_notify_and_survive_restart(tmp_path):
     path = str(tmp_path / "persistent.sqlite3")
     store = Store(path)
     search = store.add_search(config())
-    assert store.record_scan(search["id"], config(), [job()], 10) == 0
-    assert store.jobs()[0]["status"] == "baseline"
+    assert store.record_scan(search["id"], config(), [job()], 10) == 1
+    assert store.jobs()[0]["status"] == "pending"
+    store.delivery_sent(job().key, 10)
     assert store.record_scan(search["id"], config(), [job(), job("2")], 10) == 1
     store.close()
     store = Store(path)
@@ -60,7 +61,7 @@ def test_same_job_across_searches_has_one_alert(store):
     assert store.summary()["pending"] == 1
 
 
-def test_pause_resume_and_scope_change_baseline(store):
+def test_pause_resume_and_scope_change_first_scan_state(store):
     search = store.add_search(config())
     store.record_scan(search["id"], config(), [job()], 1)
     store.update_search(search["id"], config(enabled=False))
@@ -74,13 +75,13 @@ def test_pause_resume_and_scope_change_baseline(store):
     assert store.summary()["jobs"] == 1
 
 
-def test_failed_initial_scan_does_not_establish_baseline(store):
+def test_failed_initial_scan_does_not_suppress_first_successful_alerts(store):
     search = store.add_search(config())
     delay = store.record_failure(search["id"], "Blocked", 600)
     assert delay >= 600
     assert not store.search(search["id"])["initialized"]
     store.record_scan(search["id"], config(), [job()], 1)
-    assert store.summary()["pending"] == 0
+    assert store.summary()["pending"] == 1
 
 
 async def test_platform_backoff_survives_manual_check(store):

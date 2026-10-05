@@ -126,13 +126,13 @@
             <button class="active" data-status="">All discovered</button
             ><button data-status="sent">Alerted</button
             ><button data-status="pending">Waiting to send</button
-            ><button data-status="baseline">Initial baseline</button
+            ><button data-status="baseline">Previously skipped</button
             ><button data-status="failed">Delivery failed</button>
           </div>
           <div id="jobs" class="jobs"></div>
           <p class="footnote">
-            First scans build your baseline. Only newly discovered listings
-            trigger alerts. Publication times are shown as reported by each
+            The first scan sends your initial matches. Later scans alert only on
+            new listings. Publication times are shown as reported by each
             platform.
           </p>
         </section>
@@ -310,8 +310,8 @@
           monitoring this search</label
         >
         <p class="field-help">
-          The first successful scan saves a baseline without sending old
-          listings.
+          The first successful scan sends matching listings to Telegram.
+          Listings already discovered by another search are not sent twice.
         </p>
         <div class="dialog-actions">
           <button type="button" class="secondary" data-close="search-dialog">

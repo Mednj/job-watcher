@@ -140,7 +140,7 @@ function renderJobs() {
     return;
   }
   const badges = {
-    baseline: ["Initial baseline", "idle"],
+    baseline: ["Previously skipped", "idle"],
     pending: ["Waiting to send", "warning"],
     sent: ["Alert delivered", ""],
     failed: ["Delivery failed", "warning"],
@@ -162,7 +162,7 @@ function renderSearches() {
     ? searches
         .map(
           (s) =>
-            `<article class="search-card"><div class="search-card-head">${logo(s.source)}<div><h3>${esc(s.name)}</h3><span class="muted">${sourceName(s.source)}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "Building baseline"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · ${s.experience === "any" ? "Any experience" : s.experience === "entry" ? "Entry level" : "Experienced"} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p><div class="search-health">Last success: ${esc(date(s.last_success))} · ${s.last_count} results · ${s.last_new} new alerts${s.last_duration_ms != null ? ` · ${(s.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(s.next_check, state.status.sources.find((x) => x.source === s.source)?.next_request || 0)))}` : "Monitoring paused"}</div>${s.error ? `<p class="search-error">${esc(s.error)}</p>` : ""}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check now</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`,
+            `<article class="search-card"><div class="search-card-head">${logo(s.source)}<div><h3>${esc(s.name)}</h3><span class="muted">${sourceName(s.source)}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "First scan pending"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · ${s.experience === "any" ? "Any experience" : s.experience === "entry" ? "Entry level" : "Experienced"} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p><div class="search-health">Last success: ${esc(date(s.last_success))} · ${s.last_count} results · ${s.last_new} new alerts${s.last_duration_ms != null ? ` · ${(s.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(s.next_check, state.status.sources.find((x) => x.source === s.source)?.next_request || 0)))}` : "Monitoring paused"}</div>${s.error ? `<p class="search-error">${esc(s.error)}</p>` : ""}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check now</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`,
         )
         .join("")
     : empty(
@@ -302,7 +302,7 @@ $("search-form").addEventListener("submit", async (event) => {
     toast(
       id
         ? "Search updated."
-        : "Search saved. Your first scan will build a baseline.",
+        : "Search saved. Your first matches will be sent to Telegram.",
     );
     await refresh();
   } catch (error) {
