@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "127.0.0.1:${WATCHER_PORT:-8000}:8000"
+      - "${WATCHER_BIND_ADDRESS:-127.0.0.1}:${WATCHER_PORT:-8000}:8000"
       - "127.0.0.1:${BROWSER_VIEWER_PORT:-7900}:7900"
     env_file: ${WATCHER_ENV_FILE:-.env}
     environment:

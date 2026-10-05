@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     name: Tests and Docker builds
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && fromJSON('["self-hosted", "Linux", "X64", "job-watcher"]') || 'ubuntu-24.04' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +22,11 @@ jobs:
           python-version: '3.13'
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m ruff check .
-      - run: python -m playwright install --with-deps chromium
+      - name: Install browser test runtime
+        run: python -m playwright install chromium
+      - name: Install browser dependencies on hosted PR runner
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        run: python -m playwright install-deps chromium
       - run: python -m pytest -q
         env:
           RUN_UI_TESTS: '1'
