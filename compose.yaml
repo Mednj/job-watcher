@@ -23,6 +23,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     shm_size: 1gb
+    tmpfs:
+      - /tmp:size=256m,mode=1777
     volumes:
       - jobteaser-profile:/profile
     healthcheck:

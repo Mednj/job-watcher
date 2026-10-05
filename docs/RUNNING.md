@@ -194,3 +194,5 @@ JobTeaser uses loopback CDP shared between the two services. No debugging port i
 The database is bind-mounted from `./data`, preserving the existing app history. The browser profile uses the `jobteaser-profile` named volume. Stop the host Python server before starting Compose to avoid port conflicts and duplicate notification workers. `docker compose stop` pauses monitoring; `docker compose up -d` resumes it. Recreating the watcher also requires recreating its browser because they share a network namespace: `docker compose up -d --force-recreate`.
 
 Both services have health checks and restart policies. Browser health means Chromium is reachable, not that JobTeaser has accepted its session. Check the JobTeaser search status in the dashboard for actual access errors. After manually clearing a challenge, request a fresh check. JobTeaser still reads only the first results page.
+
+The browser restart test passed after isolating temporary display files on tmpfs and clearing only stale profile singleton links. JobTeaser returned 16 DevOps matches again after restart.

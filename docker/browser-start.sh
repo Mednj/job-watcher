@@ -1,5 +1,15 @@
 #!/bin/sh
 set -eu
+# This profile belongs exclusively to this service. Clear only stale singleton links.
+if [ -L /profile/SingletonLock ]; then
+  lock_pid=$(readlink /profile/SingletonLock | sed 's/.*-//')
+  case "$lock_pid" in
+    *[!0-9]*|'') ;;
+    *) if ! kill -0 "$lock_pid" 2>/dev/null; then
+         rm -f /profile/SingletonLock /profile/SingletonSocket /profile/SingletonCookie
+       fi ;;
+  esac
+fi
 Xvfb :99 -screen 0 1440x900x24 -nolisten tcp &
 sleep 1
 fluxbox >/tmp/fluxbox.log 2>&1 &
