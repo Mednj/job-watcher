@@ -3,7 +3,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from app.models import Job, SearchInput
+from app.models import Job, SearchInput, normalize
 
 
 class Store:
@@ -11,9 +11,13 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.db.create_function("normalize_company", 1, normalize, deterministic=True)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS banned_recruiters (
+                name TEXT NOT NULL, normalized TEXT PRIMARY KEY, created_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS searches (
                 id INTEGER PRIMARY KEY, config TEXT NOT NULL, initialized INTEGER DEFAULT 0,
                 next_check REAL DEFAULT 0, last_check REAL, last_success REAL,
@@ -69,6 +73,34 @@ class Store:
                 self.db.execute(
                     "UPDATE searches SET config=? WHERE id=?", (config.model_dump_json(), row["id"])
                 )
+
+    def banned_recruiters(self):
+        return [
+            dict(row) for row in self.db.execute("SELECT * FROM banned_recruiters ORDER BY name")
+        ]
+
+    def is_banned(self, company):
+        return bool(
+            self.db.execute(
+                "SELECT 1 FROM banned_recruiters WHERE normalized=?", (normalize(company),)
+            ).fetchone()
+        )
+
+    def ban_recruiter(self, name):
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO banned_recruiters VALUES (?,?,?)",
+                (name.strip(), normalize(name), time.time()),
+            )
+        return self.banned_recruiters()
+
+    def unban_recruiter(self, name):
+        with self.db:
+            return bool(
+                self.db.execute(
+                    "DELETE FROM banned_recruiters WHERE normalized=?", (normalize(name),)
+                ).rowcount
+            )
 
     def close(self):
         self.db.close()
@@ -185,6 +217,7 @@ class Store:
             or SearchInput.model_validate(current).for_source(config.source) != config
         ):
             return 0
+        jobs = [job for job in jobs if not self.is_banned(job.company)]
         now = time.time()
         new_count = 0
         with self.db:
@@ -254,7 +287,13 @@ class Store:
         return data
 
     def jobs(self, limit=100, source=None, status=None, query=None):
-        clauses, params = [], []
+        clauses, params = (
+            [
+                "NOT EXISTS (SELECT 1 FROM banned_recruiters b "
+            "WHERE b.normalized=normalize_company(json_extract(jobs.payload, '$.company')))"
+            ],
+            [],
+        )
         if source:
             clauses.append("source=?")
             params.append(source)
@@ -268,7 +307,11 @@ class Store:
         rows = self.db.execute(
             "SELECT * FROM jobs" + where + " ORDER BY first_seen DESC,key LIMIT ?", [*params, limit]
         )
-        return [self.decode_job(row) for row in rows]
+        return [
+            self.decode_job(row)
+            for row in rows
+            if not self.is_banned(json.loads(row["payload"])["company"])
+        ]
 
     def set_applied(self, key: str, applied: bool):
         with self.db:
@@ -276,12 +319,15 @@ class Store:
         return bool(result.rowcount)
 
     def next_delivery(self):
-        row = self.db.execute(
-            "SELECT * FROM jobs WHERE status='pending' AND next_attempt<=? "
-            "ORDER BY first_seen,key LIMIT 1",
+        rows = self.db.execute(
+            "SELECT * FROM jobs WHERE status='pending' AND next_attempt<=? ORDER BY first_seen,key",
             (time.time(),),
-        ).fetchone()
-        return self.decode_job(row) if row else None
+        )
+        for row in rows:
+            job = self.decode_job(row)
+            if not self.is_banned(job["company"]):
+                return job
+        return None
 
     def delivery_sent(self, key, duration_ms):
         with self.db:

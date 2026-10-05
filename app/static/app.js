@@ -211,6 +211,7 @@ async function refresh() {
     state.jobs = jobs;
     renderStatus();
     renderJobs();
+    await refreshBans();
   } catch (error) {
     $("worker-label").textContent = error.message;
     $("worker-dot").classList.add("error");
@@ -416,3 +417,58 @@ for (const [id, applied] of [
     $("application-yes").disabled = $("application-no").disabled = false;
   });
 }
+
+async function refreshBans() {
+  const bans = await api("recruiter-bans");
+  $("banned-recruiters").innerHTML = bans.length
+    ? bans
+        .map(
+          (b) =>
+            `<article class="job"><div class="job-main"><h3>${esc(b.name)}</h3><p class="muted">Excluded from every search</p></div><button class="secondary" data-unban="${esc(b.name)}">Remove ban</button></article>`,
+        )
+        .join("")
+    : '<p class="muted">No blocked recruiters.</p>';
+}
+async function banRecruiter(name) {
+  await api("recruiter-bans", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  toast("Recruiter blocked across all searches.");
+  await refresh();
+}
+$("ban-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await banRecruiter($("ban-name").value);
+    $("ban-form").reset();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("application-ban").addEventListener("click", async () => {
+  const job = state.jobs.find((j) => j.key === applicationKey);
+  if (!job) return;
+  $("application-ban").disabled = true;
+  try {
+    await banRecruiter(job.company);
+    $("application-dialog").close();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    $("application-ban").disabled = false;
+  }
+});
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-unban]");
+  if (!button) return;
+  try {
+    await api(`recruiter-bans/${encodeURIComponent(button.dataset.unban)}`, {
+      method: "DELETE",
+    });
+    await refresh();
+    toast("Recruiter allowed again.");
+  } catch (error) {
+    toast(error.message, true);
+  }
+});

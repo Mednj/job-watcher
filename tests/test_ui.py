@@ -180,3 +180,15 @@ def test_applied_popup_and_undo(page):
     page.get_by_role("button", name="Undo applied", exact=True).click()
     page.locator(".job:not(.applied)").wait_for()
     assert not job["applied"]
+
+
+def test_blocked_recruiter_tab_add_remove(page):
+    page.get_by_role("button", name="Blocked recruiters").click()
+    page.locator("#ban-name").fill("UI blocked company")
+    page.locator("#ban-form").get_by_role("button", name="Ban recruiter", exact=True).click()
+    page.get_by_role("heading", name="UI blocked company", exact=True).wait_for()
+    page.reload()
+    page.get_by_role("button", name="Blocked recruiters").click()
+    page.get_by_role("heading", name="UI blocked company", exact=True).wait_for()
+    page.get_by_role("button", name="Remove ban", exact=True).click()
+    page.get_by_text("No blocked recruiters.", exact=True).wait_for()

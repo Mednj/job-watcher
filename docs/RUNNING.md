@@ -175,3 +175,7 @@ APEC, Glassdoor, Indeed, JobTeaser, and Monster returned access challenges durin
 ### Track applications
 
 Click an opportunity title or “View & apply” in the dashboard to open the listing and a “Did you apply?” popup. Choose “Yes, I applied” after submitting: the card becomes grey and shows Applied. “Not yet” leaves it unmarked, and “Decide later” closes the popup. Use “Undo applied” to correct a mistake. This status persists across refreshes, restarts and repeated scans, independently of Telegram delivery. Clicks on direct job links inside Telegram cannot trigger this dashboard popup.
+
+### Block recruiters
+
+The application popup includes “Ban recruiter”. This blocks the listing's company name, since individual recruiter identities are not provided by the sources. Manage the global list in the Blocked recruiters tab: add names manually or remove bans. Matching is exact after normalizing case, accents and whitespace. Blocked companies are excluded across every search and platform, including queued alerts and the existing dashboard feed. History remains stored and reappears if unblocked. Alerts already in transmission cannot be recalled.

@@ -96,3 +96,44 @@ def test_application_status_persists_and_is_independent_of_delivery(tmp_path):
     store.set_applied(job.key, False)
     assert store.jobs()[0]["applied"] is False
     store.close()
+
+
+def test_recruiter_bans_filter_new_scans_and_queued_alerts(tmp_path):
+    from app.models import Job, SearchInput
+    from app.store import Store
+
+    database = str(tmp_path / "bans.sqlite3")
+    with TestClient(create_app(Settings(database=database), run_monitor=False)) as client:
+        store = client.app.state.store
+        config = SearchInput(name="Cloud", sources=["linkedin"], keywords="cloud")
+        search = store.add_search(config)
+        job = Job(
+            "linkedin",
+            "111",
+            "Cloud engineer",
+            "Éxample",
+            "Paris",
+            "https://www.linkedin.com/jobs/view/111/",
+        )
+        store.record_scan(search["id"], config.for_source("linkedin"), [job], 1)
+        assert store.next_delivery() is not None
+        assert client.post("/api/recruiter-bans", json={"name": "example"}).status_code == 200
+        assert client.get("/api/jobs").json() == []
+        assert store.next_delivery() is None
+        second = Job(
+            "linkedin",
+            "222",
+            "Cloud engineer",
+            "EXAMPLE",
+            "Paris",
+            "https://www.linkedin.com/jobs/view/222/",
+        )
+        assert store.record_scan(search["id"], config.for_source("linkedin"), [second], 1) == 0
+        assert client.post("/api/recruiter-bans", json={"name": "Not listed"}).status_code == 422
+    store = Store(database)
+    assert store.is_banned("Éxample")
+    assert len(store.banned_recruiters()) == 1
+    store.unban_recruiter("EXAMPLE")
+    assert store.next_delivery()["key"] == job.key
+    assert store.record_scan(search["id"], config.for_source("linkedin"), [second], 1) == 1
+    store.close()

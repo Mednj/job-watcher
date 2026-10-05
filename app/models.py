@@ -159,3 +159,15 @@ class Job:
 
 class ApplicationUpdate(BaseModel):
     applied: bool = Field(strict=True)
+
+
+class RecruiterBan(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value):
+        value = value.strip()
+        if not normalize(value) or normalize(value) in ("not listed", "unknown"):
+            raise ValueError("Enter an identifiable company name")
+        return value

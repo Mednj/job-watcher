@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
-from app.models import SOURCES, ApplicationUpdate, SearchInput, Source
+from app.models import SOURCES, ApplicationUpdate, RecruiterBan, SearchInput, Source
 from app.monitor import Monitor
 from app.store import Store
 from app.telegram import DeliveryError
@@ -90,6 +90,20 @@ def create_app(settings: Settings | None = None, run_monitor=True):
         q: str | None = Query(default=None, max_length=200),
     ):
         return request.app.state.store.jobs(limit, source, status, q)
+
+    @app.get("/api/recruiter-bans")
+    async def recruiter_bans(request: Request):
+        return request.app.state.store.banned_recruiters()
+
+    @app.post("/api/recruiter-bans")
+    async def ban_recruiter(ban: RecruiterBan, request: Request):
+        return request.app.state.store.ban_recruiter(ban.name)
+
+    @app.delete("/api/recruiter-bans/{name}")
+    async def unban_recruiter(name: str, request: Request):
+        if not request.app.state.store.unban_recruiter(name):
+            raise HTTPException(404, "Recruiter not found")
+        return {"ok": True}
 
     @app.patch("/api/jobs/{job_key}/application")
     async def update_application(job_key: str, update: ApplicationUpdate, request: Request):

@@ -29,6 +29,9 @@
           <button class="nav-item" data-page="delivery">
             <span>↗</span> Telegram delivery
           </button>
+          <button class="nav-item" data-page="bans">
+            <span>⊘</span> Blocked recruiters
+          </button>
         </nav>
         <div class="sidebar-bottom">
           <div class="local-badge">
@@ -169,6 +172,27 @@
             are spaced apart; cooldowns and multiple searches can increase the
             actual interval.
           </p>
+        </section>
+        <section class="page" id="page-bans">
+          <div class="heading-row">
+            <div>
+              <h1>Blocked recruiters</h1>
+              <p class="subtitle">
+                Block a company across all searches and platforms. Matching
+                ignores case and accents. Remove a ban to allow its offers
+                again.
+              </p>
+            </div>
+          </div>
+          <form id="ban-form">
+            <label
+              >Company name<input
+                id="ban-name"
+                maxlength="200"
+                required /></label
+            ><button class="primary" type="submit">Ban recruiter</button>
+          </form>
+          <div id="banned-recruiters"></div>
         </section>
         <section class="page" id="page-delivery">
           <div class="heading-row">
@@ -437,7 +461,8 @@ TELEGRAM_CHAT_ID=your_chat_id</pre>
         your application.
       </p>
       <div class="dialog-actions">
-        <button class="secondary" id="application-no">Not yet</button>
+        <button class="secondary" id="application-no">Not yet</button
+        ><button class="secondary" id="application-ban">Ban recruiter</button>
         <button class="primary" id="application-yes">Yes, I applied</button>
         <button class="text-button" data-close="application-dialog">
           Decide later
