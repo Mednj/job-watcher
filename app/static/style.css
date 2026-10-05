@@ -1009,22 +1009,38 @@ pre {
   border-top: 1px solid var(--line);
 }
 
-.job.applied {
-  background: rgba(184, 242, 207, 0.035);
-  box-shadow: inset 3px 0 0 #729c87;
-}
 .job.applied h3 a {
-  color: #bac8c1;
+  color: #aab5bd;
 }
 .job.applied .source-logo {
-  background: #26332e;
-  color: #a7c7b7;
+  background: #222c33;
+  color: #9caeb9;
 }
-.badge.applied-badge {
-  background: #263a30;
-  color: #c0e5d1;
-  border: 1px solid #3c5949;
+.application-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 23px;
+  color: #b4c4bb;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.application-status > span[aria-hidden] {
+  color: #56636c;
+}
+.application-status button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.application-status button:hover {
+  color: var(--text);
 }
 .job.applied .job-right > a {
-  color: #a7c7b7;
+  color: #aab5bd;
 }
