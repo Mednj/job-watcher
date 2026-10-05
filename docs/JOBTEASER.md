@@ -37,7 +37,7 @@ Once listings are visible, configure `JOBTEASER_CDP_ENDPOINT=http://127.0.0.1:92
 
 Verified DOM selectors use JobTeaser's `jobad-card` test IDs for titles, company, contract and location. Stable UUIDs identify offers; relative publication labels are preserved without invented timestamps. Missing or changed cards report an error. Confirmed empty-result pages are accepted, while challenges and unknown pages report errors with backoff.
 
-Each search now changes the keyword independently. `IT` uses the native keyword `informatique` followed by the app's broader title matching. Only the first page (20 cards in the live test) is read; there is no pagination or guaranteed chronological ordering. Contract and city filters are applied locally to that window. Default France searches require France in the location label, so listings with unspecified/multiple locations can be missed. Experience filtering is unavailable. Recruiter bans, deduplication, applied status and Telegram delivery use the normal shared pipeline.
+Each search now changes the keyword independently. `IT` uses the native keyword `informatique` followed by the app's broader title matching. Up to five pages are read per scan by default, following the observed next-page links. There is no guaranteed chronological ordering. Contract and city filters are applied locally to that window. Default France searches require France in the location label, so listings with unspecified/multiple locations can be missed. Experience filtering is unavailable. Recruiter bans, deduplication, applied status and Telegram delivery use the normal shared pipeline.
 
 Browser launch through the agent's terminal was rejected by automatic approval review; the user opened Chrome manually. The successful live test used that session. Expose the debugging port only on loopback and use a dedicated profile, never your everyday profile.
 
@@ -45,3 +45,7 @@ Browser launch through the agent's terminal was rejected by automatic approval r
 ## Docker validation
 
 On 2026-10-05 the dedicated ordinary Chromium service opened JobTeaser successfully inside Docker before attachment. Successive native keyword searches returned 16 DevOps and 3 cloud matches in France. The app and browser services were healthy, the browser viewer responded, and the existing database retained four searches and 76 jobs. Docker Desktop must remain running; the Windows Chrome window is no longer required for the containerized app. Use the local browser viewer only if the container session later presents a challenge.
+
+JobTeaser pagination: set `JOBTEASER_MAX_PAGES` in `.env` (default 5, range 1–20) and `JOBTEASER_PAGE_DELAY_SECONDS` (default/minimum 2 seconds). Recreate containers after changing these values. Scans stop at the last page, deduplicate offers by UUID, and reject invalid/repeated navigation. A challenge or broken later page fails the scan rather than reporting incomplete results as a success. Alerts are queued after the complete scan, so larger page limits increase detection-to-alert time. Contract and location filters still apply locally.
+
+Live multi-page validation in Docker: five DevOps pages contained 100 unique offers, of which 34 matched DevOps and France. The scan completed in approximately 15 seconds. The five-page cap was reached; the source had more pages available. These counts are a test snapshot.

@@ -2,9 +2,10 @@
 
 import asyncio
 import json
+import logging
 import os
 import re
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -12,6 +13,7 @@ from app.models import Job, normalize
 from app.sources import SourceError
 
 LOCK = asyncio.Lock()
+logger = logging.getLogger(__name__)
 
 
 def validate_endpoint(endpoint):
@@ -152,6 +154,64 @@ def parse_page(html, page_url):
     return list(jobs.values())
 
 
+def next_page_url(html, current_url):
+    soup = BeautifulSoup(html, "html.parser")
+    link = soup.select_one(
+        '[data-testid="job-ads-pagination"] a[aria-label="Aller à la page suivante"]'
+    )
+    if not link:
+        return None
+    target = urljoin(current_url, link.get("href", ""))
+    current = parse_qs(urlparse(current_url).query)
+    query = parse_qs(urlparse(target).query)
+    try:
+        valid = (
+            is_search_page(target)
+            and query.get("q") == current.get("q")
+            and int(query.get("page", ["0"])[0]) == int(current.get("page", ["1"])[0]) + 1
+        )
+    except (ValueError, IndexError):
+        valid = False
+    if not valid:
+        raise SourceError("JobTeaser pagination changed; refusing an invalid next-page link")
+    return target
+
+
+async def collect_pages(page, url, max_pages=5, page_delay=2):
+    jobs = {}
+    visited = set()
+    pages_checked = 0
+    while url and pages_checked < max_pages:
+        if url in visited:
+            raise SourceError("JobTeaser pagination repeated a page")
+        visited.add(url)
+        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        await page.wait_for_function(
+            "document.querySelector('[data-testid=jobad-card]') || "
+            "/security|just a moment|checkup/i.test(document.title) || "
+            "(document.querySelector('[data-testid=job-ads-wrapper]') && "
+            "/(?:^|[^0-9])0\\s+offres?/.test(document.body.innerText))",
+            timeout=15000,
+        )
+        html = await page.content()
+        batch = parse_page(html, url)
+        pages_checked += 1
+        before = len(jobs)
+        jobs.update({job.key: job for job in batch})
+        if pages_checked > 1 and batch and len(jobs) == before:
+            raise SourceError("JobTeaser returned repeated results on a different page")
+        url = next_page_url(html, url) if batch else None
+        if url and pages_checked < max_pages:
+            await asyncio.sleep(page_delay)
+    logger.info(
+        "JobTeaser checked %s pages, %s unique offers, capped=%s",
+        pages_checked,
+        len(jobs),
+        bool(url),
+    )
+    return list(jobs.values())
+
+
 async def fetch_browser(search):
     endpoint = os.getenv("JOBTEASER_CDP_ENDPOINT", "").strip()
     if not endpoint:
@@ -194,15 +254,12 @@ async def fetch_browser(search):
                         "informatique" if normalize(search.keywords) == "it" else search.keywords
                     )
                     url = "https://www.jobteaser.com/fr/job-offers?" + urlencode({"q": keyword})
-                    await page.goto(url, wait_until="domcontentloaded", timeout=25000)
-                    await page.wait_for_function(
-                        "document.querySelector('[data-testid=jobad-card]') || "
-                        "/security|just a moment|checkup/i.test(document.title) || "
-                        "(document.querySelector('[data-testid=job-ads-wrapper]') && "
-                        "/(?:^|[^0-9])0\\s+offres?/.test(document.body.innerText))",
-                        timeout=15000,
-                    )
-                    jobs = parse_page(await page.content(), page.url)
+                    try:
+                        max_pages = max(1, min(20, int(os.getenv("JOBTEASER_MAX_PAGES", "5"))))
+                        delay = max(2, float(os.getenv("JOBTEASER_PAGE_DELAY_SECONDS", "2")))
+                    except ValueError:
+                        raise SourceError("Invalid JobTeaser pagination settings", 3600) from None
+                    jobs = await collect_pages(page, url, max_pages, delay)
                 finally:
                     # Disconnect our CDP client; leave the dedicated browser open.
                     await browser.close()

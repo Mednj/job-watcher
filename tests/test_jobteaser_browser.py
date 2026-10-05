@@ -131,3 +131,101 @@ def test_jobteaser_real_card_structure_and_empty_detection():
             '<div data-testid="job-ads-wrapper">20 offres</div>',
             "https://www.jobteaser.com/fr/job-offers",
         )
+
+
+@pytest.mark.asyncio
+async def test_pagination_collects_distinct_offers_and_respects_limit():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.jobteaser_browser import collect_pages
+
+    visited = []
+
+    def html(ids, next_page):
+        jobs = [
+            {
+                "@type": "JobPosting",
+                "title": "Cloud CDI",
+                "hiringOrganization": {"name": "Example"},
+                "url": f"https://www.jobteaser.com/fr/job-offers/12345678-1234-1234-1234-{number:012d}-cloud",
+            }
+            for number in ids
+        ]
+        nav = (
+            (
+                '<nav data-testid="job-ads-pagination">'
+                '<a aria-label="Aller à la page suivante" '
+                f'href="?q=cloud&page={next_page}">Next</a></nav>'
+            )
+            if next_page
+            else ""
+        )
+        return '<script type="application/ld+json">' + json.dumps(jobs) + "</script>" + nav
+
+    pages = [html([1, 2], 2), html([2, 3], 3), html([4], None)]
+
+    async def goto(url, **kwargs):
+        visited.append(url)
+
+    async def content():
+        return pages[len(visited) - 1]
+
+    page = SimpleNamespace(goto=goto, content=content, wait_for_function=AsyncMock())
+    jobs = await collect_pages(
+        page, "https://www.jobteaser.com/fr/job-offers?q=cloud", max_pages=2, page_delay=0
+    )
+    assert len(jobs) == 3
+    assert len(visited) == 2
+    visited.clear()
+    jobs = await collect_pages(
+        page, "https://www.jobteaser.com/fr/job-offers?q=cloud", max_pages=5, page_delay=0
+    )
+    assert len(jobs) == 4
+    assert len(visited) == 3
+
+
+def test_pagination_rejects_external_or_changed_search_links():
+    from app.jobteaser_browser import next_page_url
+
+    current = "https://www.jobteaser.com/fr/job-offers?q=cloud&page=1"
+    for link in (
+        "https://evil.example/fr/job-offers?q=cloud&page=2",
+        "?q=data&page=2",
+        "?q=cloud&page=1",
+        "?q=cloud&page=bad",
+    ):
+        html = (
+            '<nav data-testid="job-ads-pagination">'
+            f'<a aria-label="Aller à la page suivante" href="{link}">Next</a></nav>'
+        )
+        with pytest.raises(SourceError):
+            next_page_url(html, current)
+    assert next_page_url("<nav></nav>", current) is None
+
+
+@pytest.mark.asyncio
+async def test_later_page_challenge_does_not_return_partial_success():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.jobteaser_browser import collect_pages
+
+    payload = {
+        "@type": "JobPosting",
+        "title": "Cloud CDI",
+        "hiringOrganization": {"name": "Example"},
+        "url": "https://www.jobteaser.com/fr/job-offers/12345678-1234-1234-1234-123456789abc-cloud",
+    }
+    first = '<script type="application/ld+json">' + json.dumps(payload) + "</script>"
+    first += (
+        '<nav data-testid="job-ads-pagination">'
+        '<a aria-label="Aller à la page suivante" href="?q=cloud&page=2">Next</a></nav>'
+    )
+    page = SimpleNamespace(
+        goto=AsyncMock(),
+        wait_for_function=AsyncMock(),
+        content=AsyncMock(side_effect=[first, "<title>Just a moment...</title>"]),
+    )
+    with pytest.raises(SourceError, match="security challenge"):
+        await collect_pages(page, "https://www.jobteaser.com/fr/job-offers?q=cloud", page_delay=0)
