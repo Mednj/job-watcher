@@ -1,0 +1,346 @@
+const $ = (id) => document.getElementById(id);
+const state = {
+  status: null,
+  jobs: [],
+  filter: "",
+  token: sessionStorage.getItem("jw-token") || "",
+  refreshing: false,
+};
+const esc = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+const sourceName = (source) =>
+  source === "linkedin" ? "LinkedIn" : "HelloWork";
+const logo = (source) =>
+  `<span class="source-logo ${esc(source)}">${source === "linkedin" ? "in" : "hw"}</span>`;
+const date = (timestamp) =>
+  timestamp
+    ? new Date(timestamp * 1000).toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "Not checked yet";
+function age(timestamp) {
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - timestamp));
+  return seconds < 60
+    ? `${seconds}s ago`
+    : seconds < 3600
+      ? `${Math.floor(seconds / 60)}m ago`
+      : seconds < 86400
+        ? `${Math.floor(seconds / 3600)}h ago`
+        : date(timestamp);
+}
+let toastTimer;
+function toast(message, error = false) {
+  $("toast").textContent = message;
+  $("toast").className = `visible${error ? " error" : ""}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ($("toast").className = ""), 5000);
+}
+async function api(path, options = {}) {
+  const response = await fetch(`/api/${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+      ...options.headers,
+    },
+  });
+  if (response.status === 401) {
+    if (!$("auth-dialog").open) $("auth-dialog").showModal();
+    throw new Error("Enter your access token to connect.");
+  }
+  const data = await response.json();
+  if (!response.ok)
+    throw new Error(
+      typeof data.detail === "string"
+        ? data.detail
+        : "Check the form values and try again.",
+    );
+  return data;
+}
+function page(name) {
+  document
+    .querySelectorAll(".page")
+    .forEach((el) => el.classList.toggle("active", el.id === `page-${name}`));
+  document
+    .querySelectorAll("[data-page]")
+    .forEach((el) => el.classList.toggle("active", el.dataset.page === name));
+}
+function renderStatus() {
+  const s = state.status,
+    summary = s.summary,
+    active = s.searches.filter((x) => x.enabled);
+  $("stat-jobs").textContent = summary.jobs;
+  $("stat-sent").textContent = summary.sent;
+  $("stat-queue").textContent =
+    `${summary.pending} waiting · ${summary.failed} failed`;
+  $("stat-searches").textContent = active.length;
+  $("search-count").textContent = s.searches.length;
+  $("stat-latency").textContent =
+    summary.average_detection_to_delivery_ms == null
+      ? "—"
+      : `${(summary.average_detection_to_delivery_ms / 1000).toFixed(1)}s`;
+  $("worker-label").textContent = s.monitor_running
+    ? "Radar online"
+    : "Monitoring stopped";
+  $("worker-dot").classList.toggle("error", !s.monitor_running);
+  $("updated").textContent =
+    `UPDATED ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  $("connections").innerHTML = ["linkedin", "hellowork"]
+    .map((source) => {
+      const searches = active.filter((x) => x.source === source),
+        errors = searches.filter((x) => x.error),
+        latest = Math.max(0, ...searches.map((x) => x.last_success || 0));
+      const badge = errors.length
+        ? "Needs attention"
+        : !searches.length
+          ? "No searches"
+          : !latest
+            ? "Starting"
+            : "Monitoring";
+      return `<article class="connection">${logo(source)}<div><h3>${sourceName(source)}</h3><p>${searches.length} active ${searches.length === 1 ? "search" : "searches"} · ${latest ? `Last success ${esc(age(latest))}` : "Awaiting first scan"}</p></div><span class="badge ${errors.length ? "warning" : !searches.length ? "idle" : ""}">${badge}</span></article>`;
+    })
+    .join("");
+  $("telegram-banner").classList.toggle("hidden", s.telegram_configured);
+  $("delivery-title").textContent = s.telegram_configured
+    ? "Credentials configured"
+    : "Not connected yet";
+  $("delivery-description").textContent = s.telegram_configured
+    ? `${summary.sent} delivered · ${summary.pending} waiting · ${summary.failed} failed. Send a test to verify the connection.`
+    : "Add your bot credentials to the local .env file and restart the app. New alerts will wait in the queue.";
+  $("telegram-error").textContent = s.telegram_error || "";
+  $("test-telegram").disabled = !s.telegram_configured;
+  $("retry-telegram").disabled = !summary.failed;
+  renderSearches();
+}
+function empty(title, description, action = true) {
+  return `<div class="empty"><div class="empty-mark">◎</div><h3>${title}</h3><p>${description}</p>${action ? '<button class="primary" data-action="new-search">＋ Create your first search</button>' : ""}</div>`;
+}
+function renderJobs() {
+  $("feed-count").textContent = state.jobs.length;
+  if (!state.jobs.length) {
+    $("jobs").innerHTML = state.status?.searches.length
+      ? empty(
+          "No opportunities in this view yet",
+          "Your radar will show jobs after the first successful scan. Try another filter, or check your saved searches for source errors.",
+          false,
+        )
+      : empty(
+          "Your next move is out there.",
+          "Start with a keyword like cloud or DevOps, or choose IT for a broader search. Your radar takes it from there.",
+        );
+    return;
+  }
+  const badges = {
+    baseline: ["Initial baseline", "idle"],
+    pending: ["Waiting to send", "warning"],
+    sent: ["Alert delivered", ""],
+    failed: ["Delivery failed", "warning"],
+  };
+  $("jobs").innerHTML = state.jobs
+    .map((job) => {
+      const badge = badges[job.status] || ["Unknown", "idle"];
+      const safeUrl =
+        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com)\//.test(job.url)
+          ? job.url
+          : "#";
+      return `<article class="job">${logo(job.source)}<div class="job-main"><h3><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}</div><div class="job-right"><span class="badge ${badge[1]}">${badge[0]}</span><small>Found ${esc(age(job.first_seen))}</small><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
+    })
+    .join("");
+}
+function renderSearches() {
+  const searches = state.status.searches;
+  $("searches").innerHTML = searches.length
+    ? searches
+        .map(
+          (s) =>
+            `<article class="search-card"><div class="search-card-head">${logo(s.source)}<div><h3>${esc(s.name)}</h3><span class="muted">${sourceName(s.source)}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "Building baseline"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · ${s.experience === "any" ? "Any experience" : s.experience === "entry" ? "Entry level" : "Experienced"} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p><div class="search-health">Last success: ${esc(date(s.last_success))} · ${s.last_count} results · ${s.last_new} new alerts${s.last_duration_ms != null ? ` · ${(s.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(s.next_check, state.status.sources.find((x) => x.source === s.source)?.next_request || 0)))}` : "Monitoring paused"}</div>${s.error ? `<p class="search-error">${esc(s.error)}</p>` : ""}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check now</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`,
+        )
+        .join("")
+    : empty(
+        "A focused search is a faster start.",
+        "Choose your keyword and contract, then add a search for each platform you want to watch.",
+      );
+}
+async function refresh() {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  try {
+    const params = new URLSearchParams({ limit: "100" });
+    if ($("source-filter").value)
+      params.set("source", $("source-filter").value);
+    if (state.filter) params.set("status", state.filter);
+    if ($("job-query").value.trim())
+      params.set("q", $("job-query").value.trim());
+    const [status, jobs] = await Promise.all([
+      api("status"),
+      api(`jobs?${params}`),
+    ]);
+    state.status = status;
+    state.jobs = jobs;
+    renderStatus();
+    renderJobs();
+  } catch (error) {
+    $("worker-label").textContent = error.message;
+    $("worker-dot").classList.add("error");
+  } finally {
+    state.refreshing = false;
+  }
+}
+function searchDialog(search = null) {
+  $("search-form").reset();
+  $("search-id").value = search?.id || "";
+  $("search-dialog-title").textContent = search
+    ? "Edit search"
+    : "Create a search";
+  for (const field of [
+    "name",
+    "source",
+    "keywords",
+    "location",
+    "contract",
+    "experience",
+  ]) {
+    if (search) $(`search-${field}`).value = search[field];
+  }
+  $("search-interval").value = search?.interval_seconds || "60";
+  $("search-exclusions").value = search?.exclude_keywords.join(", ") || "";
+  $("search-enabled").checked = search?.enabled ?? true;
+  updateContractNote();
+  $("search-dialog").showModal();
+}
+function updateContractNote() {
+  $("contract-note").textContent =
+    $("search-source").value === "linkedin"
+      ? "LinkedIn uses French contract names as search keywords. Exact contract filtering is available on HelloWork."
+      : "HelloWork applies native contract filters. Experience categories use the platform’s own filters.";
+}
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  if (button.dataset.page) page(button.dataset.page);
+  if (button.dataset.close) $(button.dataset.close).close();
+  if (button.dataset.action === "new-search") searchDialog();
+  if (button.dataset.action === "setup") $("setup-dialog").showModal();
+  if (button.hasAttribute("data-status")) {
+    state.filter = button.dataset.status;
+    document
+      .querySelectorAll("[data-status]")
+      .forEach((el) => el.classList.toggle("active", el === button));
+    await refresh();
+  }
+  if (button.dataset.searchAction) {
+    const s = state.status.searches.find(
+      (x) => x.id === Number(button.dataset.id),
+    );
+    if (!s) return;
+    const action = button.dataset.searchAction;
+    if (action === "edit") {
+      searchDialog(s);
+      return;
+    }
+    button.disabled = true;
+    try {
+      if (action === "delete") {
+        await api(`searches/${s.id}`, { method: "DELETE" });
+        toast("Search removed. Discovered jobs are kept.");
+      }
+      if (action === "check") {
+        await api(`searches/${s.id}/check`, { method: "POST" });
+        toast("Check queued. Platform cooldowns still apply.");
+      }
+      if (action === "toggle") {
+        await api(`searches/${s.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ ...s, enabled: !s.enabled }),
+        });
+        toast(s.enabled ? "Search paused." : "Search resumed.");
+      }
+      await refresh();
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+});
+$("search-source").addEventListener("change", updateContractNote);
+$("search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const config = {};
+  for (const field of [
+    "name",
+    "source",
+    "keywords",
+    "location",
+    "contract",
+    "experience",
+  ])
+    config[field] = $(`search-${field}`).value.trim();
+  config.exclude_keywords = $("search-exclusions")
+    .value.split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  config.interval_seconds = Number($("search-interval").value);
+  config.enabled = $("search-enabled").checked;
+  const id = $("search-id").value;
+  $("save-search").disabled = true;
+  try {
+    await api(id ? `searches/${id}` : "searches", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(config),
+    });
+    $("search-dialog").close();
+    toast(
+      id
+        ? "Search updated."
+        : "Search saved. Your first scan will build a baseline.",
+    );
+    await refresh();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    $("save-search").disabled = false;
+  }
+});
+$("auth-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  state.token = $("access-token").value.trim();
+  sessionStorage.setItem("jw-token", state.token);
+  $("auth-dialog").close();
+  await refresh();
+});
+$("source-filter").addEventListener("change", refresh);
+let queryTimer;
+$("job-query").addEventListener("input", () => {
+  clearTimeout(queryTimer);
+  queryTimer = setTimeout(refresh, 250);
+});
+for (const [id, route, message] of [
+  ["test-telegram", "telegram/test", "Test message sent. Check Telegram."],
+  ["retry-telegram", "telegram/retry", "Failed alerts queued for retry."],
+])
+  $(id).addEventListener("click", async () => {
+    $(id).disabled = true;
+    try {
+      await api(route, { method: "POST" });
+      toast(message);
+      await refresh();
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      $(id).disabled = false;
+    }
+  });
+refresh();
+setInterval(() => {
+  if (!document.hidden && !$("auth-dialog").open) refresh();
+}, 5000);

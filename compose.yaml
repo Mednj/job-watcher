@@ -1,0 +1,13 @@
+services:
+  watcher:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      APP_ACCESS_TOKEN: ${APP_ACCESS_TOKEN:?Set APP_ACCESS_TOKEN in .env before using Docker}
+    volumes:
+      - watcher-data:/app/data
+volumes:
+  watcher-data:

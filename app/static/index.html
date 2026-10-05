@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#10161b" />
+    <title>Job Watcher · Your next move</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Job Watcher home"
+          ><span class="brand-mark">↗</span
+          ><span
+            >job<span class="brand-light">watcher</span
+            ><small>THE FRENCH JOB RADAR</small></span
+          ></a
+        >
+        <p class="nav-label">WORKSPACE</p>
+        <nav aria-label="Main navigation">
+          <button class="nav-item active" data-page="radar">
+            <span>◉</span> Opportunity radar
+          </button>
+          <button class="nav-item" data-page="searches">
+            <span>⌕</span> Saved searches <b id="search-count">0</b>
+          </button>
+          <button class="nav-item" data-page="delivery">
+            <span>↗</span> Telegram delivery
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="local-badge">
+            <span class="dot"></span> YOUR PERSONAL WATCHER
+          </div>
+          <p>Find it early.<br />Make your next move.</p>
+          <small>LinkedIn + HelloWork · v0.1</small>
+        </div>
+      </aside>
+      <main>
+        <header class="topbar">
+          <span
+            ><span class="dot" id="worker-dot"></span>
+            <span id="worker-label">Connecting to your radar…</span></span
+          ><span id="updated">LOCAL WORKSPACE</span>
+        </header>
+        <section class="page active" id="page-radar">
+          <div class="heading-row">
+            <div>
+              <p class="eyebrow">A HEAD START ON YOUR NEXT ROLE</p>
+              <h1>Your opportunity radar<span>.</span></h1>
+              <p class="subtitle">
+                Fresh opportunities. One feed. Your next move starts here.
+              </p>
+            </div>
+            <button class="primary" data-action="new-search">
+              ＋ New search
+            </button>
+          </div>
+          <div class="stats">
+            <article class="stat">
+              <span>DISCOVERED JOBS</span><strong id="stat-jobs">0</strong
+              ><small>Across your saved searches</small>
+            </article>
+            <article class="stat">
+              <span>ALERTS DELIVERED</span><strong id="stat-sent">0</strong
+              ><small id="stat-queue">No alerts waiting</small>
+            </article>
+            <article class="stat">
+              <span>DETECTION → DELIVERY</span
+              ><strong id="stat-latency">—</strong
+              ><small>Average time after discovery</small>
+            </article>
+            <article class="stat">
+              <span>ACTIVE SEARCHES</span><strong id="stat-searches">0</strong
+              ><small>Two platforms. Independent checks.</small>
+            </article>
+          </div>
+          <div class="section-heading">
+            <h2>Your connections</h2>
+            <span class="muted">A clear view of what’s running</span>
+          </div>
+          <div class="connections" id="connections"></div>
+          <div id="telegram-banner" class="banner">
+            <span>↗</span>
+            <div>
+              <strong>Make every new opportunity reach you.</strong>
+              <p>
+                Connect your Telegram bot to receive alerts as soon as a new
+                match is detected.
+              </p>
+            </div>
+            <button class="secondary" data-action="setup">
+              Connect Telegram
+            </button>
+          </div>
+          <div class="feed-header">
+            <div>
+              <p class="eyebrow">THE LATEST ON YOUR RADAR</p>
+              <h2>
+                Opportunities <span id="feed-count" class="count">0</span>
+              </h2>
+            </div>
+            <div class="feed-tools">
+              <label class="sr-only" for="job-query"
+                >Search discovered jobs</label
+              ><input
+                type="search"
+                id="job-query"
+                placeholder="Search title, company…"
+              /><label class="sr-only" for="source-filter"
+                >Filter by platform</label
+              ><select id="source-filter">
+                <option value="">All platforms</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="hellowork">HelloWork</option>
+              </select>
+            </div>
+          </div>
+          <div
+            class="feed-tabs"
+            role="group"
+            aria-label="Filter by alert status"
+          >
+            <button class="active" data-status="">All discovered</button
+            ><button data-status="sent">Alerted</button
+            ><button data-status="pending">Waiting to send</button
+            ><button data-status="baseline">Initial baseline</button
+            ><button data-status="failed">Delivery failed</button>
+          </div>
+          <div id="jobs" class="jobs"></div>
+          <p class="footnote">
+            First scans build your baseline. Only newly discovered listings
+            trigger alerts. Publication times are shown as reported by each
+            platform.
+          </p>
+        </section>
+        <section class="page" id="page-searches">
+          <div class="heading-row">
+            <div>
+              <p class="eyebrow">TELL YOUR RADAR WHAT TO LOOK FOR</p>
+              <h1>Saved searches<span>.</span></h1>
+              <p class="subtitle">
+                Choose a keyword, a place, and a contract. We’ll keep watch.
+              </p>
+            </div>
+            <button class="primary" data-action="new-search">
+              ＋ New search
+            </button>
+          </div>
+          <div class="info-note">
+            Try <b>cloud</b>, <b>DevOps</b>, or <b>data</b>. Use <b>IT</b> for a
+            broader technology search. Add one search per platform.
+          </div>
+          <div id="searches" class="searches-list"></div>
+          <p class="footnote">
+            Checks default to every 60 seconds. Requests to the same platform
+            are spaced apart; cooldowns and multiple searches can increase the
+            actual interval.
+          </p>
+        </section>
+        <section class="page" id="page-delivery">
+          <div class="heading-row">
+            <div>
+              <p class="eyebrow">FROM DISCOVERY TO YOUR PHONE</p>
+              <h1>Telegram delivery<span>.</span></h1>
+              <p class="subtitle">Your next opportunity should find you.</p>
+            </div>
+            <button class="secondary" data-action="setup">Setup guide</button>
+          </div>
+          <div class="delivery-layout">
+            <article class="panel">
+              <p class="eyebrow">BOT CONNECTION</p>
+              <h2 id="delivery-title">Not connected yet</h2>
+              <p id="delivery-description">
+                Add your bot credentials to the local .env file and restart the
+                app.
+              </p>
+              <div class="button-row">
+                <button class="primary" id="test-telegram">
+                  Send test message</button
+                ><button class="secondary" id="retry-telegram">
+                  Retry failed alerts
+                </button>
+              </div>
+              <p class="muted" id="telegram-error"></p>
+            </article>
+            <article class="panel">
+              <p class="eyebrow">WHAT REACHES YOU</p>
+              <div class="message-preview">
+                <span class="telegram-label">JOB WATCHER · EXAMPLE ALERT</span>
+                <h3>New job · HelloWork</h3>
+                <p>
+                  <b>Cloud Engineer · Alternance</b><br />Company name<br />📍
+                  Paris · 📄 Alternance
+                </p>
+                <span class="preview-link">View & apply ↗</span>
+              </div>
+              <p class="muted">
+                Each alert includes the title, employer, location, available
+                contract information, and a direct link.
+              </p>
+            </article>
+          </div>
+          <div class="info-note">
+            New alerts are stored before sending and retried after temporary
+            failures. They stay queued if Telegram is not configured. Network
+            timeouts can occasionally cause a duplicate delivery.
+          </div>
+        </section>
+        <footer>
+          <span>JOB WATCHER</span
+          ><span>Built for your next chapter. <span class="mint">↗</span></span>
+        </footer>
+      </main>
+    </div>
+    <dialog id="search-dialog">
+      <form id="search-form">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">A NEW SIGNAL ON YOUR RADAR</p>
+            <h2 id="search-dialog-title">Create a search</h2>
+          </div>
+          <button
+            type="button"
+            class="close"
+            data-close="search-dialog"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <input type="hidden" id="search-id" />
+        <label
+          >Search name<input
+            id="search-name"
+            required
+            maxlength="80"
+            placeholder="Cloud · Paris · Alternance"
+        /></label>
+        <div class="form-row">
+          <label
+            >Platform<select id="search-source">
+              <option value="linkedin">LinkedIn</option>
+              <option value="hellowork">HelloWork</option>
+            </select></label
+          ><label
+            >Contract<select id="search-contract">
+              <option value="any">Any contract</option>
+              <option value="Alternance">Alternance</option>
+              <option value="CDI">CDI</option>
+              <option value="CDD">CDD</option>
+              <option value="Stage">Stage</option>
+              <option value="Freelance">Freelance</option>
+            </select></label
+          >
+        </div>
+        <label
+          >Keyword<input
+            id="search-keywords"
+            required
+            maxlength="200"
+            placeholder="cloud, DevOps, data… or IT"
+        /></label>
+        <p class="field-help">
+          Keyword terms must appear in the job title. IT matches a broader
+          technology vocabulary.
+        </p>
+        <label
+          >Location<input
+            id="search-location"
+            value="France"
+            required
+            maxlength="120"
+            placeholder="France, Paris, Lyon…"
+        /></label>
+        <div class="form-row">
+          <label
+            >Experience<select id="search-experience">
+              <option value="any">Any experience</option>
+              <option value="entry">Entry level</option>
+              <option value="experienced">Experienced</option>
+            </select></label
+          ><label
+            >Check every<select id="search-interval">
+              <option value="30">30 seconds</option>
+              <option value="60" selected>60 seconds</option>
+              <option value="120">2 minutes</option>
+              <option value="300">5 minutes</option>
+              <option value="900">15 minutes</option>
+              <option value="3600">1 hour</option>
+            </select></label
+          >
+        </div>
+        <label
+          >Exclude keywords <span class="muted">(optional)</span
+          ><input id="search-exclusions" placeholder="senior, lead, manager"
+        /></label>
+        <p class="field-help">
+          Comma-separated. Matches in the title, employer, or location are
+          excluded.
+        </p>
+        <p class="info-note compact" id="contract-note">
+          LinkedIn searches use French contract names as keywords; exact
+          contract filtering is available on HelloWork.
+        </p>
+        <label class="checkbox-row"
+          ><input type="checkbox" id="search-enabled" checked /> Start
+          monitoring this search</label
+        >
+        <p class="field-help">
+          The first successful scan saves a baseline without sending old
+          listings.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary" data-close="search-dialog">
+            Cancel</button
+          ><button class="primary" type="submit" id="save-search">
+            Save search
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="setup-dialog">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">ALERTS, STRAIGHT TO YOUR PHONE</p>
+          <h2>Connect Telegram</h2>
+        </div>
+        <button class="close" data-close="setup-dialog" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <ol class="setup-steps">
+        <li>
+          Create a bot with
+          <a
+            href="https://t.me/BotFather"
+            target="_blank"
+            rel="noopener noreferrer"
+            >@BotFather</a
+          >
+          using <code>/newbot</code>.
+        </li>
+        <li>Open your bot in Telegram and send <code>/start</code>.</li>
+        <li>
+          Find your chat ID using Telegram’s <code>getUpdates</code> API. Follow
+          the instructions in <code>docs/RUNNING.md</code>.
+        </li>
+        <li>
+          Copy <code>.env.example</code> to <code>.env</code> and set:
+          <pre>
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id</pre>
+        </li>
+        <li>
+          Restart Job Watcher, then select <b>Send test message</b> on the
+          Telegram delivery page.
+        </li>
+      </ol>
+      <p class="info-note compact">
+        Keep your token private. It stays on the server and never appears in
+        this dashboard or the repository.
+      </p>
+      <div class="dialog-actions">
+        <button class="primary" data-close="setup-dialog">Got it</button>
+      </div>
+    </dialog>
+    <dialog id="auth-dialog">
+      <form id="auth-form">
+        <p class="eyebrow">PRIVATE WORKSPACE</p>
+        <h2>Unlock your radar</h2>
+        <p class="muted">
+          Enter the app access token configured on your server.
+        </p>
+        <label
+          >Access token<input
+            type="password"
+            id="access-token"
+            required
+            autocomplete="off"
+        /></label>
+        <div class="dialog-actions">
+          <button class="primary" type="submit">Connect</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
