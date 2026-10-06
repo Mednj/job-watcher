@@ -10,6 +10,7 @@ class Settings:
     telegram_token: str = ""
     telegram_chat_id: str = ""
     access_token: str = ""
+    public_origin: str = ""
     source_gap: float = 15
     http_timeout: float = 20
 
@@ -25,6 +26,7 @@ class Settings:
             telegram_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
             telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", "").strip(),
             access_token=os.getenv("APP_ACCESS_TOKEN", "").strip(),
+            public_origin=os.getenv("APP_PUBLIC_ORIGIN", "").strip(),
             source_gap=max(15, float(os.getenv("SOURCE_REQUEST_GAP_SECONDS", "15"))),
             http_timeout=max(5, float(os.getenv("HTTP_TIMEOUT_SECONDS", "20"))),
         )

@@ -19,6 +19,8 @@ Use available server ports. Create the data directory owned by UID/GID 1000 for 
 
 Expose the dashboard through the server's existing HTTPS reverse proxy. Keep the browser viewer private; use an SSH tunnel if a manual JobTeaser challenge needs completion. Never publish CDP or VNC publicly.
 
+When the browser uses HTTPS through a reverse proxy, set `APP_PUBLIC_ORIGIN` in `/etc/job-watcher.env` to the exact browser-visible origin (for example, `https://job-watcher.example.com`). This allows same-origin API writes such as marking a job as applied when the app internally sees HTTP, while other origins remain rejected. Include only scheme, hostname, and an optional port; do not include a path. Leave it unset for direct access if the request origin already matches the app's URL.
+
 After bootstrap, run `WATCHER_ENV_FILE=/etc/job-watcher.env bash scripts/deploy.sh` from the checkout, or let the production workflow deploy the tested commit. Verify container health, authenticated dashboard status, Telegram configuration, and actual source checks. Browser health alone does not establish JobTeaser access.
 
 Migrate the local SQLite database with an online backup while the local watcher is stopped, preserving queued/sent jobs, searches, application flags and recruiter bans. Start only one monitoring deployment for this personal Telegram bot to prevent duplicate alerts. The browser profile on a new server must be validated independently.

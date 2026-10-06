@@ -51,6 +51,34 @@ def test_auth_and_cross_origin_writes(tmp_path):
         )
 
 
+def test_reverse_proxy_public_origin_allows_same_origin_write_only(tmp_path):
+    settings = Settings(
+        database=str(tmp_path / "proxy.sqlite3"),
+        access_token="app-secret",
+        public_origin="https://job-watcher.example.com/",
+    )
+    with TestClient(create_app(settings, run_monitor=False)) as client:
+        headers = {
+            "Authorization": "Bearer app-secret",
+            "Origin": "https://job-watcher.example.com",
+        }
+        # The middleware allows this same-origin request through to the route.
+        # A missing job returns 404, proving it was not stopped with an origin 403.
+        assert (
+            client.patch(
+                "/api/jobs/missing/application", json={"applied": True}, headers=headers
+            ).status_code
+            == 404
+        )
+        headers["Origin"] = "https://attacker.example"
+        assert (
+            client.patch(
+                "/api/jobs/missing/application", json={"applied": True}, headers=headers
+            ).status_code
+            == 403
+        )
+
+
 def test_remote_requests_require_access_token(tmp_path):
     settings = Settings(database=str(tmp_path / "remote.sqlite3"))
     with TestClient(create_app(settings, run_monitor=False), client=("203.0.113.1", 123)) as client:

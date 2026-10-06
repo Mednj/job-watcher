@@ -1,8 +1,10 @@
+import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -15,6 +17,32 @@ from app.store import Store
 from app.telegram import DeliveryError
 
 STATIC = Path(__file__).parent / "static"
+logger = logging.getLogger(__name__)
+
+
+def _normalize_origin(value: str) -> str | None:
+    """Return a canonical web origin, rejecting values that are not origins."""
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme.lower() not in ("http", "https")
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in ("", "/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        host = parsed.hostname.lower()
+        port = parsed.port
+        if port and not (parsed.scheme.lower() == "http" and port == 80) and not (
+            parsed.scheme.lower() == "https" and port == 443
+        ):
+            host = f"{host}:{port}"
+        return f"{parsed.scheme.lower()}://{host}"
+    except (ValueError, TypeError):
+        return None
 
 
 def create_app(settings: Settings | None = None, run_monitor=True):
@@ -51,7 +79,17 @@ def create_app(settings: Settings | None = None, run_monitor=True):
             # Reject browser writes from another origin, including form-based localhost attacks.
             origin = request.headers.get("origin")
             if request.method not in ("GET", "HEAD", "OPTIONS") and origin:
-                if origin.rstrip("/") != str(request.base_url).rstrip("/"):
+                request_origin = _normalize_origin(str(request.base_url))
+                allowed_origins = {request_origin} if request_origin else set()
+                configured_origin = _normalize_origin(settings.public_origin)
+                if configured_origin:
+                    allowed_origins.add(configured_origin)
+                if _normalize_origin(origin) not in allowed_origins:
+                    logger.warning(
+                        "Rejected cross-origin API write: origin=%r request_origin=%r",
+                        origin,
+                        request_origin,
+                    )
                     return JSONResponse(
                         {"detail": "Cross-origin writes are not allowed"}, status_code=403
                     )
