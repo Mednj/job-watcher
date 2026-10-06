@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
+from app.locations import is_french_location
 from app.models import Job, normalize
 from app.sources import SourceError
 
@@ -270,7 +271,8 @@ async def fetch_browser(search):
     return [
         job
         for job in jobs
-        if job.matches(search)
+        if is_french_location(job.location)
+        and job.matches(search)
         and (search.contract == "any" or normalize(job.contract) == normalize(search.contract))
         and (
             (normalize(search.location) == "france" and "france" in normalize(job.location))

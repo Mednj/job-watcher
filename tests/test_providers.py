@@ -36,6 +36,10 @@ def test_public_source_parsers():
     assert job.contract == "Alternance"
     assert job.published_at is None
     assert parse_wttj({"data": []}) == []
+    foreign = {"data": [{**PAYLOAD["data"][0], "office": {"city": "Krakow", "country_code": "PL"}}]}
+    assert parse_wttj(foreign) == []
+    unknown_country = {"data": [{**PAYLOAD["data"][0], "office": {"city": "Paris"}}]}
+    assert parse_wttj(unknown_country) == []
     with pytest.raises(SourceError):
         parse_francetravail("<html>Security check</html>")
     with pytest.raises(SourceError):

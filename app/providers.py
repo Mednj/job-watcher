@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import httpx
 from bs4 import BeautifulSoup
 
+from app.locations import is_french_location
 from app.models import Job, SearchInput, normalize
 from app.sources import SourceError
 
@@ -31,7 +32,7 @@ def parse_wttj(payload):
     jobs = []
     for row in payload["data"]:
         try:
-            if (row.get("office") or {}).get("country_code") not in (None, "FR"):
+            if (row.get("office") or {}).get("country_code") != "FR":
                 continue
             org = row["organization"]
             slug = (org.get("website_organization") or {}).get("slug") or org["slug"]
@@ -142,7 +143,7 @@ async def fetch_extended(client, search: SearchInput):
     return [
         job
         for job in jobs
-        if job.matches(search)
+        if is_french_location(job.location) and job.matches(search)
         and (
             normalize(search.location) in ("france", "any", "")
             or normalize(search.location) in normalize(job.location)

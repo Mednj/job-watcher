@@ -52,6 +52,37 @@ def test_empty_results():
     assert parse_hellowork("<h1>0 offres</h1>") == []
 
 
+@pytest.mark.parametrize(
+    "location",
+    [
+        "Cracovie, Petite Pologne, Pologne",
+        "Espagne",
+        "Inde",
+        "Raanana, Israël",
+        "London, United Kingdom",
+        "New York, United States",
+    ],
+)
+async def test_linkedin_foreign_locations_are_filtered(location):
+    html = LINKEDIN.replace("Paris, France", location)
+    config = SearchInput(name="Cloud", source="linkedin", keywords="cloud", location="France")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=html))
+    ) as client:
+        assert await fetch_jobs(client, config) == []
+
+
+def test_country_filter_keeps_city_only_results_but_rejects_foreign_countries():
+    from app.locations import is_french_location
+
+    assert is_french_location("Paris")
+    assert is_french_location("Paris, France")
+    assert not is_french_location("Cracovie, Petite Pologne, Pologne")
+    assert not is_french_location("Raanana, District centre, Israël")
+    assert is_french_location("Paris", country_code="FR")
+    assert not is_french_location("Paris", country_code="PL")
+
+
 def test_partial_card_fails_instead_of_losing_listings():
     with pytest.raises(SourceError):
         parse_linkedin(LINKEDIN + '<div data-entity-urn="urn:li:jobPosting:999"></div>')

@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import httpx
 from bs4 import BeautifulSoup
 
+from app.locations import is_french_location
 from app.models import Job, SearchInput
 
 
@@ -136,4 +137,4 @@ async def fetch_jobs(client: httpx.AsyncClient, search: SearchInput) -> list[Job
     html = response.content.decode("utf-8", errors="replace")
     parser = parse_linkedin if search.source == "linkedin" else parse_hellowork
     jobs = await asyncio.to_thread(parser, html)
-    return [job for job in jobs if job.matches(search)]
+    return [job for job in jobs if is_french_location(job.location) and job.matches(search)]
