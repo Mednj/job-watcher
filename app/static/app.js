@@ -4,6 +4,7 @@ const state = {
   jobs: [],
   filter: "",
   token: sessionStorage.getItem("jw-token") || "",
+  user: null,
   refreshing: false,
 };
 const esc = (value) =>
@@ -64,9 +65,11 @@ async function api(path, options = {}) {
       ...options.headers,
     },
   });
-  if (response.status === 401) {
+  if (response.status === 401 && path !== "auth/login") {
+    state.token = "";
+    sessionStorage.removeItem("jw-token");
     if (!$("auth-dialog").open) $("auth-dialog").showModal();
-    throw new Error("Enter your access token to connect.");
+    throw new Error("Sign in to continue.");
   }
   const data = await response.json();
   if (!response.ok) {
@@ -104,6 +107,9 @@ function renderStatus() {
   const s = state.status,
     summary = s.summary,
     active = s.searches.filter((x) => x.enabled);
+  state.user = s.user;
+  $("current-user").textContent = s.user?.username || "";
+  $("users-nav").classList.toggle("hidden", s.user?.role !== "admin");
   $("stat-jobs").textContent = summary.jobs;
   $("stat-sent").textContent = summary.sent;
   $("stat-queue").textContent =
@@ -146,7 +152,7 @@ function renderStatus() {
     : "Not connected yet";
   $("delivery-description").textContent = s.telegram_configured
     ? `${summary.sent} delivered · ${summary.pending} waiting · ${summary.failed} failed. Send a test to verify the connection.`
-    : "Add your bot credentials to the local .env file and restart the app. New alerts will wait in the queue.";
+    : "Add your own bot token and chat ID below. New alerts will wait in your private queue until connected.";
   $("telegram-error").textContent = s.telegram_error || "";
   $("test-telegram").disabled = !s.telegram_configured;
   $("retry-telegram").disabled = !summary.failed;
@@ -267,10 +273,18 @@ function updateContractNote() {
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) return;
-  if (button.dataset.page) page(button.dataset.page);
+  if (button.dataset.page) {
+    page(button.dataset.page);
+    if (button.dataset.page === "users") refreshUsers();
+    if (button.dataset.page === "delivery") loadTelegramSettings();
+  }
   if (button.dataset.close) $(button.dataset.close).close();
   if (button.dataset.action === "new-search") searchDialog();
   if (button.dataset.action === "setup") $("setup-dialog").showModal();
+  if (button.dataset.action === "telegram") {
+    page("delivery");
+    loadTelegramSettings();
+  }
   if (button.hasAttribute("data-status")) {
     state.filter = button.dataset.status;
     document
@@ -357,12 +371,169 @@ $("search-form").addEventListener("submit", async (event) => {
     $("save-search").disabled = false;
   }
 });
+async function loadTelegramSettings() {
+  try {
+    const settings = await api("telegram/settings");
+    $("telegram-chat-id").value = settings.chat_id || "";
+    $("telegram-token").value = "";
+    $("telegram-token").placeholder = settings.configured
+      ? "Token saved · leave blank to keep it"
+      : "Paste your bot token from BotFather";
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
+async function refreshUsers() {
+  try {
+    const users = await api("users");
+    $("user-list").innerHTML = users
+      .map(
+        (user) =>
+          `<article class="job account-card"><div class="job-main"><h3>${esc(user.username)} ${user.id === state.user?.id ? "(you)" : ""}</h3><p class="muted">${esc(user.role)} · ${user.active ? "Active" : "Disabled"}</p></div>${user.id === state.user?.id ? "" : `<button class="secondary" data-user-active="${user.id}" data-active="${user.active ? "false" : "true"}">${user.active ? "Disable" : "Enable"}</button>`}</article>`,
+      )
+      .join("");
+  } catch (error) {
+    toast(error.message, true);
+  }
+}
 $("auth-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  state.token = $("access-token").value.trim();
-  sessionStorage.setItem("jw-token", state.token);
-  $("auth-dialog").close();
-  await refresh();
+  $("auth-error").textContent = "";
+  try {
+    const result = await api("auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("login-username").value.trim(),
+        password: $("login-password").value,
+      }),
+    });
+    state.token = result.token;
+    state.user = result.user;
+    sessionStorage.setItem("jw-token", state.token);
+    $("login-password").value = "";
+    $("auth-dialog").close();
+    await refresh();
+  } catch (error) {
+    $("auth-error").textContent = error.message;
+  }
+});
+$("show-register").addEventListener("click", () => {
+  $("auth-form").classList.add("hidden");
+  $("register-form").classList.remove("hidden");
+});
+$("show-login").addEventListener("click", () => {
+  $("register-form").classList.add("hidden");
+  $("auth-form").classList.remove("hidden");
+});
+$("register-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("register-error").textContent = "";
+  try {
+    const result = await api("auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("register-username").value.trim(),
+        password: $("register-password").value,
+      }),
+    });
+    state.token = result.token;
+    state.user = result.user;
+    sessionStorage.setItem("jw-token", state.token);
+    $("register-form").reset();
+    $("auth-dialog").close();
+    $("register-form").classList.add("hidden");
+    $("auth-form").classList.remove("hidden");
+    await refresh();
+  } catch (error) {
+    $("register-error").textContent = error.message;
+  }
+});
+$("user-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("users", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("new-username").value.trim(),
+        password: $("new-password").value,
+      }),
+    });
+    $("user-form").reset();
+    toast("Account created. Share its username and temporary password securely.");
+    await refreshUsers();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("telegram-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("telegram/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        bot_token: $("telegram-token").value,
+        chat_id: $("telegram-chat-id").value,
+      }),
+    });
+    $("telegram-token").value = "";
+    toast("Your Telegram bot is saved for this account.");
+    await refresh();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("disconnect-telegram").addEventListener("click", async () => {
+  try {
+    await api("telegram/settings", { method: "DELETE" });
+    $("telegram-settings-form").reset();
+    toast("Telegram disconnected for this account.");
+    await refresh();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("user-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-user-active]");
+  if (!button) return;
+  try {
+    await api(`users/${button.dataset.userActive}/active?active=${button.dataset.active}`, {
+      method: "PATCH",
+    });
+    await refreshUsers();
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("change-password").addEventListener("click", () => $("password-dialog").showModal());
+$("password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("auth/password", {
+      method: "PUT",
+      body: JSON.stringify({
+        current_password: $("current-password").value,
+        new_password: $("replacement-password").value,
+      }),
+    });
+    sessionStorage.removeItem("jw-token");
+    state.token = "";
+    $("password-form").reset();
+    $("password-dialog").close();
+    $("auth-dialog").showModal();
+    toast("Password changed. Sign in with your new password.");
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+$("logout").addEventListener("click", async () => {
+  try {
+    await api("auth/logout", { method: "POST" });
+  } finally {
+    sessionStorage.removeItem("jw-token");
+    state.token = "";
+    state.user = null;
+    $("auth-dialog").showModal();
+  }
 });
 $("source-filter").addEventListener("change", refresh);
 let queryTimer;

@@ -29,16 +29,16 @@ job history, scan state, source cooldowns, and unsent alerts survive restarts in
 
 1. Create a bot with [@BotFather](https://t.me/BotFather), using `/newbot`.
 2. Open that bot and send `/start` from the chat that should receive alerts.
-3. Set `TELEGRAM_BOT_TOKEN` in your local `.env` file.
-4. Retrieve your chat ID with the Bot API. This command loads the token locally
-   and prints only chat IDs, without putting the token in your browser history:
+3. Retrieve your chat ID with the Bot API. The following command prompts for
+   the token without putting it in shell history and prints only chat IDs:
 
    ```powershell
-   .\.venv\Scripts\python.exe -c "import os,httpx; from dotenv import load_dotenv; load_dotenv(); r=httpx.get('https://api.telegram.org/bot'+os.environ['TELEGRAM_BOT_TOKEN']+'/getUpdates').json(); print(sorted({str(u['message']['chat']['id']) for u in r.get('result',[]) if 'message' in u}))"
+   .\.venv\Scripts\python.exe -c "import getpass,httpx; token=getpass.getpass('Bot token: '); r=httpx.get('https://api.telegram.org/bot'+token+'/getUpdates').json(); print(sorted({str(u['message']['chat']['id']) for u in r.get('result',[]) if 'message' in u}))"
    ```
 
-5. Set `TELEGRAM_CHAT_ID` in `.env`, restart the app, and click **Send test message**
-   on the Telegram delivery page. Do not share or commit `.env`.
+4. Sign in, open **Telegram delivery**, and enter your bot token and chat ID.
+   Save it, then click **Send test message**. Tokens are private to each user
+   and are never returned by the settings API.
 
 The Bot API documentation is at https://core.telegram.org/bots/api#sendmessage.
 The app does not poll `getUpdates` or register a webhook.
@@ -108,15 +108,20 @@ replicas would perform duplicate scans/deliveries. The worker task supervisor
 is in-process; use a service manager or container restart policy for unattended
 operation. Do not use reload mode for an always-on deployment.
 
-The default server is bound to localhost. API access without `APP_ACCESS_TOKEN`
-is rejected for remote clients. For remote hosting, set a strong access token,
-use HTTPS behind a reverse proxy, and run one worker. Enter that access token in
-the dashboard; it is held in session storage. Secrets never appear in status
-responses. Keep the Docker port bound to localhost unless adding HTTPS/access
-control deliberately. The app is for one user, not a multi-user SaaS.
+The dashboard supports self-registration and account login. Searches, job
+history, application flags, recruiter bans, alert queues, and Telegram settings
+are private to the signed-in account. An administrator can disable accounts.
+Passwords are salted and hashed; API sessions expire after 30 days. Run behind
+HTTPS and keep the Docker port private unless your reverse proxy protects it.
 
-Set `APP_ACCESS_TOKEN` in `.env` before using Compose (container requests are
-remote from the app's perspective, even with the port bound to localhost).
+Set a strong `APP_ACCESS_TOKEN` in `.env` before using Compose (container
+requests are remote from the app's perspective, even with the port bound to
+localhost). On a fresh database the initial administrator is `admin`, with
+that value as its starting password. Change it after signing in. On an existing
+single-user database, the migration attaches existing searches, history, bans,
+and legacy Telegram credentials to this admin account. New users can register
+from the sign-in screen. The old shared access token is no longer accepted as a
+general API credential.
 
 ```powershell
 docker compose up --build -d
@@ -187,7 +192,7 @@ JobTeaser now has an optional experimental open-first/CDP browser reader. It is 
 
 `docker compose up --build -d` runs the app and a separate ordinary Chromium browser. The browser opens JobTeaser before the app attaches. It uses a persisted dedicated Linux profile, independently of your Windows Chrome window. Keep Docker Desktop running; your Windows browser can be closed.
 
-The dashboard is at http://127.0.0.1:8000. Copy `APP_ACCESS_TOKEN` from the local `.env` into its unlock dialog. The browser viewer is at http://127.0.0.1:7900/vnc.html?autoconnect=true&resize=scale. Use it to complete JobTeaser's security checks or login manually. The container session starts fresh; successful access from Windows Chrome does not prove the Linux browser will be accepted.
+The dashboard is at http://127.0.0.1:8000. On a new database, sign in as `admin` with the initial `APP_ACCESS_TOKEN` value; existing databases keep their data and use that value as the initial admin password after migration. The browser viewer is at http://127.0.0.1:7900/vnc.html?autoconnect=true&resize=scale. Use it to complete JobTeaser's security checks or login manually. The container session starts fresh; successful access from Windows Chrome does not prove the Linux browser will be accepted.
 
 JobTeaser uses loopback CDP shared between the two services. No debugging port is published. Dashboard and browser viewer ports bind only to host localhost. The browser viewer provides control of the dedicated profile and should remain local.
 

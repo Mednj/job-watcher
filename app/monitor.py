@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from types import SimpleNamespace
 
 import httpx
 
@@ -21,9 +22,9 @@ class Monitor:
         self.client = None
         self.telegram_client = None
         self.telegram = None
-        self.delivery_error = None
+        self.delivery_error = {}
         self.running = False
-        self.telegram_gate = 0
+        self.telegram_gate = {}
 
     async def start(self):
         self.client = httpx.AsyncClient(
@@ -117,29 +118,42 @@ class Monitor:
 
     async def deliver_one(self, job):
         start = time.perf_counter()
+        user_id = job.get("user_id", 1)
+        telegram_token = job.get("telegram_token", "")
+        telegram_chat_id = job.get("telegram_chat_id", "")
+        personal_bot = self.telegram if not telegram_token and user_id == 1 else None
+        if personal_bot is None:
+            personal_bot = Telegram(
+                SimpleNamespace(
+                    telegram_token=telegram_token,
+                    telegram_chat_id=telegram_chat_id,
+                    telegram_configured=bool(telegram_token and telegram_chat_id),
+                ),
+                self.telegram_client,
+            )
         try:
-            await self.telegram.send(format_message(job))
-            self.store.delivery_sent(job["key"], (time.perf_counter() - start) * 1000)
-            self.delivery_error = None
-            self.telegram_gate = time.time() + 1.05
+            await personal_bot.send(format_message(job))
+            self.store.delivery_sent(
+                job["user_id"], job["key"], (time.perf_counter() - start) * 1000
+            )
+            self.delivery_error.pop(job["user_id"], None)
+            self.telegram_gate[job["user_id"]] = time.time() + 1.05
         except DeliveryError as exc:
             delay = max(exc.retry_after or 0, min(3600, 2 ** min(job["attempts"] + 1, 10)))
-            self.store.delivery_failed(job["key"], str(exc), delay, exc.permanent)
-            self.delivery_error = str(exc)
+            self.store.delivery_failed(job["user_id"], job["key"], str(exc), delay, exc.permanent)
+            self.delivery_error[job["user_id"]] = str(exc)
             # Slow or invalid bot credentials must not trigger a burst for every queued job.
-            self.telegram_gate = time.time() + (60 if exc.permanent else delay)
+            self.telegram_gate[job["user_id"]] = time.time() + (60 if exc.permanent else delay)
 
     async def delivery_loop(self):
         while True:
             try:
-                if self.settings.telegram_configured and time.time() >= self.telegram_gate:
-                    job = self.store.next_delivery()
-                    if job:
-                        await self.deliver_one(job)
-                        continue
+                job = self.store.next_delivery(configured_only=True)
+                if job and time.time() >= self.telegram_gate.get(job["user_id"], 0):
+                    await self.deliver_one(job)
+                    continue
             except Exception:
-                self.delivery_error = "Unexpected notification worker error"
-                logger.error(self.delivery_error)
+                logger.error("Unexpected notification worker error")
             self.wake_delivery.clear()
             try:
                 await asyncio.wait_for(self.wake_delivery.wait(), timeout=0.5)

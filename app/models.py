@@ -171,3 +171,31 @@ class RecruiterBan(BaseModel):
         if not normalize(value) or normalize(value) in ("not listed", "unknown"):
             raise ValueError("Enter an identifiable company name")
         return value
+
+
+class LoginInput(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("username")
+    @classmethod
+    def clean_username(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("Username is required")
+        return value
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=40, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=10, max_length=256)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class TelegramSettings(BaseModel):
+    bot_token: str = Field(default="", max_length=256)
+    chat_id: str = Field(default="", max_length=128)

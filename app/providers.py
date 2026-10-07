@@ -143,7 +143,8 @@ async def fetch_extended(client, search: SearchInput):
     return [
         job
         for job in jobs
-        if is_french_location(job.location) and job.matches(search)
+        if is_french_location(job.location)
+        and job.matches(search)
         and (
             normalize(search.location) in ("france", "any", "")
             or normalize(search.location) in normalize(job.location)

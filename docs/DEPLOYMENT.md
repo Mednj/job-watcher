@@ -4,7 +4,7 @@ Pushes to main run lint, all tests (including browser UI tests), and both Docker
 
 The production server needs Docker Compose v2, Git, outbound HTTPS, the runner service and `/etc/job-watcher.env` readable only by the deployment account. The public repository contains no credentials or browser profiles. Keep repository write access restricted to trusted maintainers; the deployment runner has Docker access.
 
-Provision `/etc/job-watcher.env` outside the runner checkout with the app's Telegram settings, a private APP_ACCESS_TOKEN and:
+Provision `/etc/job-watcher.env` outside the runner checkout with a strong APP_ACCESS_TOKEN and:
 
 ```
 WATCHER_ENV_FILE=/etc/job-watcher.env
@@ -23,7 +23,7 @@ When the browser uses HTTPS through a reverse proxy, set `APP_PUBLIC_ORIGIN` in 
 
 After bootstrap, run `WATCHER_ENV_FILE=/etc/job-watcher.env bash scripts/deploy.sh` from the checkout, or let the production workflow deploy the tested commit. Verify container health, authenticated dashboard status, Telegram configuration, and actual source checks. Browser health alone does not establish JobTeaser access.
 
-Migrate the local SQLite database with an online backup while the local watcher is stopped, preserving queued/sent jobs, searches, application flags and recruiter bans. Start only one monitoring deployment for this personal Telegram bot to prevent duplicate alerts. The browser profile on a new server must be validated independently.
+Migrate the local SQLite database with an online backup while the local watcher is stopped, preserving queued/sent jobs, searches, application flags and recruiter bans. On first startup the existing workspace is assigned to the initial admin; each account has separate searches, job history, recruiter blocks, alert queue, and Telegram credentials. Start only one monitoring deployment per database to prevent duplicate scans and alerts. The browser profile on a new server must be validated independently.
 
 Deployments fail visibly on unhealthy containers. There is no automatic schema rollback. Retain database backups and redeploy a previously tested commit when needed, assessing schema compatibility first.
 

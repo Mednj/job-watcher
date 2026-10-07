@@ -11,6 +11,9 @@
 * {
   box-sizing: border-box;
 }
+.hidden {
+  display: none !important;
+}
 body {
   margin: 0;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -172,6 +175,42 @@ main {
   font-size: 9px;
   letter-spacing: 1.1px;
   color: #738289;
+}
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.account-actions button {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.stack-form {
+  display: grid;
+  gap: 6px;
+  max-width: 520px;
+}
+.account-form {
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  max-width: 900px;
+  margin: 22px 0 30px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.account-form label {
+  margin-top: 0;
+}
+.account-card {
+  padding: 15px 0;
+}
+.compact {
+  line-height: 1.6;
+}
+.compact code {
+  overflow-wrap: anywhere;
 }
 .page {
   display: none;

@@ -29,6 +29,9 @@
           <button class="nav-item" data-page="delivery">
             <span>↗</span> Telegram delivery
           </button>
+          <button class="nav-item hidden" id="users-nav" data-page="users">
+            <span>♙</span> Accounts
+          </button>
           <button class="nav-item" data-page="bans">
             <span>⊘</span> Blocked recruiters
           </button>
@@ -46,7 +49,7 @@
           <span
             ><span class="dot" id="worker-dot"></span>
             <span id="worker-label">Connecting to your radar…</span></span
-          ><span id="updated">LOCAL WORKSPACE</span>
+          ><span class="account-actions"><span id="current-user"></span><button class="text-button" id="change-password">Password</button><button class="text-button" id="logout">Sign out</button><span id="updated">LOCAL WORKSPACE</span></span>
         </header>
         <section class="page active" id="page-radar">
           <div class="heading-row">
@@ -94,7 +97,7 @@
                 match is detected.
               </p>
             </div>
-            <button class="secondary" data-action="setup">
+            <button class="secondary" data-action="telegram">
               Connect Telegram
             </button>
           </div>
@@ -208,9 +211,13 @@
               <p class="eyebrow">BOT CONNECTION</p>
               <h2 id="delivery-title">Not connected yet</h2>
               <p id="delivery-description">
-                Add your bot credentials to the local .env file and restart the
-                app.
+                Add your personal bot credentials below.
               </p>
+              <form id="telegram-settings-form" class="stack-form">
+                <label>Bot API token<input id="telegram-token" type="password" autocomplete="new-password" placeholder="Saved token stays hidden" /></label>
+                <label>Telegram chat ID<input id="telegram-chat-id" autocomplete="off" required /></label>
+                <div class="button-row"><button class="primary" type="submit">Save bot settings</button><button class="secondary" type="button" id="disconnect-telegram">Disconnect</button></div>
+              </form>
               <div class="button-row">
                 <button class="primary" id="test-telegram">
                   Send test message</button
@@ -242,6 +249,15 @@
             failures. They stay queued if Telegram is not configured. Network
             timeouts can occasionally cause a duplicate delivery.
           </div>
+        </section>
+        <section class="page" id="page-users">
+          <div class="heading-row"><div><p class="eyebrow">PRIVATE RADARS, SEPARATE ACCOUNTS</p><h1>Account management<span>.</span></h1><p class="subtitle">Create and disable accounts. Each person has their own searches, history, recruiter blocks, and Telegram bot.</p></div></div>
+          <form id="user-form" class="stack-form account-form">
+            <label>Username<input id="new-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]+" required /></label>
+            <label>Temporary password<input id="new-password" type="password" minlength="10" maxlength="256" autocomplete="new-password" required /></label>
+            <button class="primary" type="submit">Create account</button>
+          </form>
+          <div id="user-list" class="searches-list"></div>
         </section>
         <footer>
           <span>JOB WATCHER</span
@@ -415,20 +431,11 @@
           Find your chat ID using Telegram’s <code>getUpdates</code> API. Follow
           the instructions in <code>docs/RUNNING.md</code>.
         </li>
-        <li>
-          Copy <code>.env.example</code> to <code>.env</code> and set:
-          <pre>
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id</pre>
-        </li>
-        <li>
-          Restart Job Watcher, then select <b>Send test message</b> on the
-          Telegram delivery page.
-        </li>
+        <li>In Job Watcher, open <b>Telegram delivery</b> and save the bot token and chat ID in your personal settings.</li>
+        <li>Select <b>Send test message</b> to verify your connection.</li>
       </ol>
       <p class="info-note compact">
-        Keep your token private. It stays on the server and never appears in
-        this dashboard or the repository.
+        Your bot token is stored on the server for your account and is never shown again after saving.
       </p>
       <div class="dialog-actions">
         <button class="primary" data-close="setup-dialog">Got it</button>
@@ -436,21 +443,35 @@ TELEGRAM_CHAT_ID=your_chat_id</pre>
     </dialog>
     <dialog id="auth-dialog">
       <form id="auth-form">
-        <p class="eyebrow">PRIVATE WORKSPACE</p>
-        <h2>Unlock your radar</h2>
+        <p class="eyebrow">YOUR PRIVATE RADAR</p>
+        <h2>Sign in to Job Watcher</h2>
         <p class="muted">
-          Enter the app access token configured on your server.
+          Each account has private searches, opportunities, and notification settings.
         </p>
-        <label
-          >Access token<input
-            type="password"
-            id="access-token"
-            required
-            autocomplete="off"
-        /></label>
+        <label>Username<input id="login-username" autocomplete="username" required /></label>
+        <label>Password<input type="password" id="login-password" autocomplete="current-password" required /></label>
+        <p class="muted compact">Initial remote administrator: username <b>admin</b>, password is the original <code>APP_ACCESS_TOKEN</code> used when this database was first started. Local development without that setting uses <code>admin@</code>. Change it after signing in.</p>
+        <p class="search-error" id="auth-error" role="alert"></p>
         <div class="dialog-actions">
-          <button class="primary" type="submit">Connect</button>
+          <button class="primary" type="submit">Sign in</button>
+          <button class="text-button" type="button" id="show-register">Create an account</button>
         </div>
+      </form>
+      <form id="register-form" class="hidden">
+        <p class="eyebrow">A RADAR THAT’S YOURS</p>
+        <h2>Create your account</h2>
+        <label>Username<input id="register-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]+" autocomplete="username" required /></label>
+        <label>Password<input id="register-password" type="password" minlength="10" maxlength="256" autocomplete="new-password" required /></label>
+        <p class="search-error" id="register-error" role="alert"></p>
+        <div class="dialog-actions"><button class="primary" type="submit">Create account</button><button class="text-button" type="button" id="show-login">Back to sign in</button></div>
+      </form>
+    </dialog>
+    <dialog id="password-dialog">
+      <form id="password-form">
+        <h2>Change password</h2>
+        <label>Current password<input id="current-password" type="password" autocomplete="current-password" required /></label>
+        <label>New password<input id="replacement-password" type="password" minlength="10" autocomplete="new-password" required /></label>
+        <div class="dialog-actions"><button type="button" class="secondary" data-close="password-dialog">Cancel</button><button class="primary" type="submit">Update password</button></div>
       </form>
     </dialog>
     <dialog id="application-dialog" aria-labelledby="application-title">

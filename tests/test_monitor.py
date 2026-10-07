@@ -177,6 +177,49 @@ async def test_delivery_retries_and_records_latency(store):
     assert store.summary()["average_detection_to_delivery_ms"] >= 0
 
 
+async def test_each_account_delivery_uses_its_own_bot_and_chat(tmp_path):
+    store = Store(
+        str(tmp_path / "personal-bots.sqlite3"),
+        bootstrap_password="admin-password-123",
+        telegram_token="admin-bot-secret",
+        telegram_chat_id="1001",
+    )
+    alice = store.add_user("alice", "alice-password-123")
+    store.save_telegram_settings(alice["id"], "alice-bot-secret", "2002")
+    for user_id, name in ((1, "Admin search"), (alice["id"], "Alice search")):
+        config = SearchInput(name=name, sources=["linkedin"], keywords="cloud")
+        search = store.add_search(config, user_id)
+        store.record_scan(search["id"], config.for_source("linkedin"), [job()], 1)
+
+    class TelegramResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"ok": True, "result": {}}
+
+    class TelegramClient:
+        calls = []
+
+        async def post(self, url, json):
+            self.calls.append((url, json["chat_id"]))
+            return TelegramResponse()
+
+    monitor = Monitor(store, Settings())
+    monitor.telegram_client = TelegramClient()
+    for _ in range(2):
+        pending = store.next_delivery(configured_only=True)
+        assert pending is not None
+        await monitor.deliver_one(pending)
+
+    delivered = set(monitor.telegram_client.calls)
+    assert delivered == {
+        ("https://api.telegram.org/botadmin-bot-secret/sendMessage", "1001"),
+        ("https://api.telegram.org/botalice-bot-secret/sendMessage", "2002"),
+    }
+    store.close()
+
+
 def test_permanent_failure_retry_and_search_deletion_keeps_history(store):
     search = store.add_search(config())
     store.record_scan(search["id"], config(), [], 1)

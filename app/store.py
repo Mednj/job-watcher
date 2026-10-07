@@ -1,13 +1,15 @@
 import json
+import secrets
 import sqlite3
 import time
 from pathlib import Path
 
+from app.auth import hash_password, session_hash, verify_password
 from app.models import Job, SearchInput, normalize
 
 
 class Store:
-    def __init__(self, path: str):
+    def __init__(self, path: str, bootstrap_password="", telegram_token="", telegram_chat_id=""):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
@@ -15,6 +17,17 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user',
+                active INTEGER NOT NULL DEFAULT 1, telegram_token TEXT NOT NULL DEFAULT '',
+                telegram_chat_id TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS banned_recruiters (
                 name TEXT NOT NULL, normalized TEXT PRIMARY KEY, created_at REAL NOT NULL
             );
@@ -45,10 +58,68 @@ class Store:
             CREATE TABLE IF NOT EXISTS source_state (
                 source TEXT PRIMARY KEY, next_request REAL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS user_bans (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL, normalized TEXT NOT NULL, created_at REAL NOT NULL,
+                PRIMARY KEY(user_id, normalized)
+            );
+            CREATE TABLE IF NOT EXISTS user_job_state (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                job_key TEXT NOT NULL REFERENCES jobs(key) ON DELETE CASCADE,
+                status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+                next_attempt REAL NOT NULL DEFAULT 0, sent_at REAL, delivery_ms REAL,
+                error TEXT, applied INTEGER NOT NULL DEFAULT 0,
+                detected_at REAL NOT NULL DEFAULT 0, last_seen REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(user_id, job_key)
+            );
         """)
+        if not self.db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            # The pre-multi-user access token becomes the initial admin password.
+            # If local development has no token, localhost API access uses this admin implicitly.
+            password = bootstrap_password or "admin@"
+            with self.db:
+                self.db.execute(
+                    "INSERT INTO users(username,password_hash,role,telegram_token,"
+                    "telegram_chat_id,created_at) "
+                    "VALUES ('admin',?,'admin',?,?,?)",
+                    (hash_password(password), telegram_token, telegram_chat_id, time.time()),
+                )
+        if "user_id" not in {row[1] for row in self.db.execute("PRAGMA table_info(searches)")}:
+            self.db.execute("ALTER TABLE searches ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+        # Move legacy shared recruiter bans into the initial administrator's private list.
+        self.db.execute(
+            "INSERT OR IGNORE INTO user_bans(user_id,name,normalized,created_at) "
+            "SELECT 1,name,normalized,created_at FROM banned_recruiters"
+        )
+        self.db.commit()
         if "applied" not in {row[1] for row in self.db.execute("PRAGMA table_info(jobs)")}:
             self.db.execute("ALTER TABLE jobs ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
-            self.db.commit()
+        user_state_columns = {
+            row[1] for row in self.db.execute("PRAGMA table_info(user_job_state)")
+        }
+        if "detected_at" not in user_state_columns:
+            self.db.execute(
+                "ALTER TABLE user_job_state ADD COLUMN detected_at REAL NOT NULL DEFAULT 0"
+            )
+        if "last_seen" not in user_state_columns:
+            self.db.execute(
+                "ALTER TABLE user_job_state ADD COLUMN last_seen REAL NOT NULL DEFAULT 0"
+            )
+        # Preserve legacy alert state and application markers for the initial administrator.
+        self.db.execute(
+            "INSERT OR IGNORE INTO user_job_state "
+            "(user_id,job_key,status,attempts,next_attempt,sent_at,delivery_ms,error,applied,"
+            "detected_at,last_seen) "
+            "SELECT 1,key,status,attempts,next_attempt,sent_at,delivery_ms,error,"
+            "COALESCE(applied,0),first_seen,last_seen FROM jobs"
+        )
+        self.db.execute(
+            "UPDATE user_job_state SET "
+            "detected_at=(SELECT first_seen FROM jobs WHERE key=job_key), "
+            "last_seen=(SELECT last_seen FROM jobs WHERE key=job_key) "
+            "WHERE detected_at=0 OR last_seen=0"
+        )
+        self.db.commit()
         # Upgrade existing single-platform searches without losing health or job history.
         with self.db:
             for row in self.db.execute("SELECT * FROM searches").fetchall():
@@ -74,41 +145,165 @@ class Store:
                     "UPDATE searches SET config=? WHERE id=?", (config.model_dump_json(), row["id"])
                 )
 
-    def banned_recruiters(self):
+    def create_session(self, user_id):
+        token = secrets.token_urlsafe(36)
+        now = time.time()
+        with self.db:
+            self.db.execute("DELETE FROM sessions WHERE expires_at<=?", (now,))
+            self.db.execute(
+                "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)",
+                (session_hash(token), user_id, now + 30 * 86400),
+            )
+        return token
+
+    def authenticate(self, username, password):
+        row = self.db.execute(
+            "SELECT * FROM users WHERE username=? COLLATE NOCASE AND active=1", (username.strip(),)
+        ).fetchone()
+        if not row or not verify_password(password, row["password_hash"]):
+            return None
+        return dict(row)
+
+    def session_user(self, token):
+        if not token:
+            return None
+        row = self.db.execute(
+            "SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id "
+            "WHERE token_hash=? AND sessions.expires_at>? AND users.active=1",
+            (session_hash(token), time.time()),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def revoke_session(self, token):
+        with self.db:
+            self.db.execute("DELETE FROM sessions WHERE token_hash=?", (session_hash(token),))
+
+    def user(self, user_id):
+        row = self.db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+    def users(self):
         return [
-            dict(row) for row in self.db.execute("SELECT * FROM banned_recruiters ORDER BY name")
+            {
+                "id": row["id"],
+                "username": row["username"],
+                "role": row["role"],
+                "active": bool(row["active"]),
+            }
+            for row in self.db.execute("SELECT id,username,role,active FROM users ORDER BY id")
         ]
 
-    def is_banned(self, company):
+    def add_user(self, username, password):
+        with self.db:
+            cursor = self.db.execute(
+                "INSERT INTO users(username,password_hash,created_at) VALUES (?,?,?)",
+                (username.strip(), hash_password(password), time.time()),
+            )
+        return self.user(cursor.lastrowid)
+
+    def set_user_active(self, user_id, active):
+        row = self.db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
+        if row and row["role"] == "admin" and not active:
+            active_admins = self.db.execute(
+                "SELECT count(*) FROM users WHERE role='admin' AND active=1"
+            ).fetchone()[0]
+            if active_admins <= 1:
+                return False
+        with self.db:
+            updated = bool(
+                self.db.execute(
+                    "UPDATE users SET active=? WHERE id=?", (int(active), user_id)
+                ).rowcount
+            )
+            if updated and not active:
+                self.db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            return updated
+
+    def change_password(self, user_id, current_password, new_password):
+        row = self.db.execute("SELECT password_hash FROM users WHERE id=?", (user_id,)).fetchone()
+        if not row or not verify_password(current_password, row[0]):
+            return False
+        with self.db:
+            self.db.execute(
+                "UPDATE users SET password_hash=? WHERE id=?",
+                (hash_password(new_password), user_id),
+            )
+            self.db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+        return True
+
+    def telegram_settings(self, user_id):
+        row = self.db.execute(
+            "SELECT telegram_token,telegram_chat_id FROM users WHERE id=?", (user_id,)
+        ).fetchone()
+        if not row:
+            return {"configured": False, "chat_id": ""}
+        return {
+            "configured": bool(row["telegram_token"] and row["telegram_chat_id"]),
+            "chat_id": row["telegram_chat_id"],
+        }
+
+    def save_telegram_settings(self, user_id, bot_token, chat_id):
+        current = self.user(user_id)
+        if not current:
+            return False
+        token = bot_token.strip() or current["telegram_token"]
+        chat = chat_id.strip()
+        with self.db:
+            self.db.execute(
+                "UPDATE users SET telegram_token=?,telegram_chat_id=? WHERE id=?",
+                (token, chat, user_id),
+            )
+        return True
+
+    def clear_telegram_settings(self, user_id):
+        with self.db:
+            self.db.execute(
+                "UPDATE users SET telegram_token='',telegram_chat_id='' WHERE id=?", (user_id,)
+            )
+
+    def banned_recruiters(self, user_id=1):
+        return [
+            dict(row)
+            for row in self.db.execute(
+                "SELECT name,normalized,created_at FROM user_bans WHERE user_id=? ORDER BY name",
+                (user_id,),
+            )
+        ]
+
+    def is_banned(self, company, user_id=1):
         return bool(
             self.db.execute(
-                "SELECT 1 FROM banned_recruiters WHERE normalized=?", (normalize(company),)
+                "SELECT 1 FROM user_bans WHERE user_id=? AND normalized=?",
+                (user_id, normalize(company)),
             ).fetchone()
         )
 
-    def ban_recruiter(self, name):
+    def ban_recruiter(self, name, user_id=1):
         with self.db:
             self.db.execute(
-                "INSERT OR IGNORE INTO banned_recruiters VALUES (?,?,?)",
-                (name.strip(), normalize(name), time.time()),
+                "INSERT OR IGNORE INTO user_bans VALUES (?,?,?,?)",
+                (user_id, name.strip(), normalize(name), time.time()),
             )
-        return self.banned_recruiters()
+        return self.banned_recruiters(user_id)
 
-    def unban_recruiter(self, name):
+    def unban_recruiter(self, name, user_id=1):
         with self.db:
             return bool(
                 self.db.execute(
-                    "DELETE FROM banned_recruiters WHERE normalized=?", (normalize(name),)
+                    "DELETE FROM user_bans WHERE user_id=? AND normalized=?",
+                    (user_id, normalize(name)),
                 ).rowcount
             )
 
     def close(self):
         self.db.close()
 
-    def searches(self):
+    def searches(self, user_id=1):
         result = []
-        for row in self.db.execute("SELECT * FROM searches ORDER BY id"):
-            data = {"id": row["id"], **json.loads(row["config"])}
+        for row in self.db.execute(
+            "SELECT * FROM searches WHERE user_id=? ORDER BY id", (user_id,)
+        ):
+            data = {"id": row["id"], "user_id": row["user_id"], **json.loads(row["config"])}
             states = [
                 dict(x)
                 for x in self.db.execute(
@@ -132,38 +327,58 @@ class Store:
             result.append(data)
         return result
 
-    def searches_for_source(self, source):
+    def searches_for_source(self, source, user_id=None):
         result = []
-        for search in self.searches():
+        searches = (
+            [
+                search
+                for user in self.db.execute("SELECT id FROM users")
+                for search in self.searches(user[0])
+            ]
+            if user_id is None
+            else self.searches(user_id)
+        )
+        for search in searches:
             for status in search["source_statuses"]:
                 if status["source"] == source:
                     result.append({**search, **status})
         return result
 
-    def search(self, search_id):
-        return next((x for x in self.searches() if x["id"] == search_id), None)
+    def search(self, search_id, user_id=None):
+        searches = (
+            [
+                search
+                for user in self.db.execute("SELECT id FROM users")
+                for search in self.searches(user[0])
+            ]
+            if user_id is None
+            else self.searches(user_id)
+        )
+        return next((x for x in searches if x["id"] == search_id), None)
 
-    def add_search(self, config: SearchInput):
+    def add_search(self, config: SearchInput, user_id=1):
         with self.db:
             cursor = self.db.execute(
-                "INSERT INTO searches(config) VALUES (?)", (config.model_dump_json(),)
+                "INSERT INTO searches(config,user_id) VALUES (?,?)",
+                (config.model_dump_json(), user_id),
             )
             search_id = cursor.lastrowid
             for source in config.sources:
                 self.db.execute(
                     "INSERT INTO search_sources(search_id,source) VALUES (?,?)", (search_id, source)
                 )
-        return self.search(search_id)
+        return self.search(search_id, user_id)
 
-    def update_search(self, search_id, config: SearchInput):
-        old = self.search(search_id)
+    def update_search(self, search_id, config: SearchInput, user_id=1):
+        old = self.search(search_id, user_id)
         if not old:
             return None
         fields = ["keywords", "location", "contract", "experience", "exclude_keywords"]
         changed = any(old[k] != config.model_dump()[k] for k in fields)
         with self.db:
             self.db.execute(
-                "UPDATE searches SET config=? WHERE id=?", (config.model_dump_json(), search_id)
+                "UPDATE searches SET config=? WHERE id=? AND user_id=?",
+                (config.model_dump_json(), search_id, user_id),
             )
             for source in old["sources"]:
                 if source not in config.sources:
@@ -181,16 +396,23 @@ class Store:
                 "next_check=0,failures=0,error=NULL WHERE search_id=?",
                 (changed, search_id),
             )
-        return self.search(search_id)
+        return self.search(search_id, user_id)
 
-    def delete_search(self, search_id):
+    def delete_search(self, search_id, user_id=1):
         with self.db:
-            return self.db.execute("DELETE FROM searches WHERE id=?", (search_id,)).rowcount > 0
+            return (
+                self.db.execute(
+                    "DELETE FROM searches WHERE id=? AND user_id=?", (search_id, user_id)
+                ).rowcount
+                > 0
+            )
 
-    def request_check(self, search_id):
+    def request_check(self, search_id, user_id=1):
         with self.db:
             self.db.execute(
-                "UPDATE search_sources SET next_check=0 WHERE search_id=?", (search_id,)
+                "UPDATE search_sources SET next_check=0 WHERE search_id IN "
+                "(SELECT id FROM searches WHERE id=? AND user_id=?)",
+                (search_id, user_id),
             )
 
     def source_ready_at(self, source):
@@ -217,12 +439,12 @@ class Store:
             or SearchInput.model_validate(current).for_source(config.source) != config
         ):
             return 0
-        jobs = [job for job in jobs if not self.is_banned(job.company)]
+        jobs = [job for job in jobs if not self.is_banned(job.company, current["user_id"])]
         now = time.time()
         new_count = 0
         with self.db:
             for job in jobs:
-                cursor = self.db.execute(
+                self.db.execute(
                     "INSERT OR IGNORE INTO jobs(key,source,payload,first_seen,last_seen,status) "
                     "VALUES (?,?,?,?,?,?)",
                     (
@@ -234,8 +456,20 @@ class Store:
                         "pending",
                     ),
                 )
-                if cursor.rowcount:
+                # Alert and application state belongs to a user, even when the listing
+                # itself was already found by another user's search.
+                state_cursor = self.db.execute(
+                    "INSERT OR IGNORE INTO user_job_state "
+                    "(user_id,job_key,status,detected_at,last_seen) VALUES (?,?,?,?,?)",
+                    (current["user_id"], job.key, "pending", now, now),
+                )
+                if state_cursor.rowcount:
                     new_count += 1
+                else:
+                    self.db.execute(
+                        "UPDATE user_job_state SET last_seen=? WHERE user_id=? AND job_key=?",
+                        (now, current["user_id"], job.key),
+                    )
                 self.db.execute(
                     "UPDATE jobs SET last_seen=?,payload=? WHERE key=?",
                     (now, json.dumps(job.to_dict(), ensure_ascii=False), job.key),
@@ -286,74 +520,116 @@ class Store:
         data["applied"] = bool(data["applied"])
         return data
 
-    def jobs(self, limit=100, source=None, status=None, query=None):
+    def jobs(self, limit=100, source=None, status=None, query=None, user_id=1):
         clauses, params = (
             [
-                "NOT EXISTS (SELECT 1 FROM banned_recruiters b "
-                "WHERE b.normalized=normalize_company(json_extract(jobs.payload, '$.company')))"
+                "NOT EXISTS (SELECT 1 FROM user_bans b WHERE b.user_id=? "
+                "AND b.normalized=normalize_company(json_extract(jobs.payload, '$.company')))"
             ],
-            [],
+            [user_id],
         )
         if source:
-            clauses.append("source=?")
+            clauses.append("jobs.source=?")
             params.append(source)
         if status:
-            clauses.append("status=?")
+            clauses.append("state.status=?")
             params.append(status)
         if query:
-            clauses.append("payload LIKE ?")
+            clauses.append("jobs.payload LIKE ?")
             params.append("%" + query + "%")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = self.db.execute(
-            "SELECT * FROM jobs" + where + " ORDER BY first_seen DESC,key LIMIT ?", [*params, limit]
+            "SELECT jobs.key,jobs.source,jobs.payload,state.detected_at AS first_seen,"
+            "state.last_seen,"
+            "state.status,state.attempts,state.next_attempt,state.sent_at,state.delivery_ms,"
+            "state.error,state.applied FROM jobs "
+            "JOIN user_job_state state ON state.job_key=jobs.key"
+            + where
+            + " AND state.user_id=? ORDER BY state.detected_at DESC,jobs.key LIMIT ?",
+            [*params, user_id, limit],
         )
-        return [
-            self.decode_job(row)
-            for row in rows
-            if not self.is_banned(json.loads(row["payload"])["company"])
-        ]
+        result = [self.decode_job(row) for row in rows]
+        for job in result:
+            job["user_id"] = user_id
+        return result
 
-    def set_applied(self, key: str, applied: bool):
+    def set_applied(self, key: str, applied: bool, user_id=1):
         with self.db:
-            result = self.db.execute("UPDATE jobs SET applied=? WHERE key=?", (int(applied), key))
+            result = self.db.execute(
+                "UPDATE user_job_state SET applied=? WHERE job_key=? AND user_id=?",
+                (int(applied), key, user_id),
+            )
         return bool(result.rowcount)
 
-    def next_delivery(self):
+    def next_delivery(self, configured_only=False):
+        configured_clause = (
+            "AND users.telegram_token!='' AND users.telegram_chat_id!='' "
+            if configured_only
+            else ""
+        )
         rows = self.db.execute(
-            "SELECT * FROM jobs WHERE status='pending' AND next_attempt<=? ORDER BY first_seen,key",
+            "SELECT jobs.key,jobs.source,jobs.payload,state.detected_at AS first_seen,"
+            "state.last_seen,state.status,state.attempts,state.next_attempt,state.sent_at,"
+            "state.delivery_ms,state.error,"
+            "state.applied,state.user_id,users.telegram_token,users.telegram_chat_id "
+            "FROM user_job_state state JOIN jobs ON jobs.key=state.job_key "
+            "JOIN users ON users.id=state.user_id WHERE state.status='pending' "
+            "AND state.next_attempt<=? AND users.active=1 "
+            + configured_clause
+            + "ORDER BY state.detected_at,jobs.key",
             (time.time(),),
         )
         for row in rows:
             job = self.decode_job(row)
-            if not self.is_banned(job["company"]):
+            job["user_id"] = row["user_id"]
+            job["telegram_token"] = row["telegram_token"]
+            job["telegram_chat_id"] = row["telegram_chat_id"]
+            if not self.is_banned(job["company"], row["user_id"]):
                 return job
         return None
 
-    def delivery_sent(self, key, duration_ms):
+    def delivery_sent(self, user_id, key=None, duration_ms=None):
+        if isinstance(key, (int, float)) and duration_ms is None:
+            user_id, key, duration_ms = 1, user_id, key
+        elif key is None:
+            user_id, key = 1, user_id
         with self.db:
             self.db.execute(
-                "UPDATE jobs SET status='sent',sent_at=?,delivery_ms=?,error=NULL WHERE key=?",
-                (time.time(), duration_ms, key),
+                "UPDATE user_job_state SET status='sent',sent_at=?,delivery_ms=?,error=NULL "
+                "WHERE user_id=? AND job_key=?",
+                (time.time(), duration_ms, user_id, key),
             )
 
-    def delivery_failed(self, key, message, delay, permanent=False):
+    def delivery_failed(self, user_id, key=None, message=None, delay=None, permanent=False):
+        if isinstance(user_id, str):
+            user_id, key, message, delay = 1, user_id, key, message
         with self.db:
             self.db.execute(
-                "UPDATE jobs SET status=?,attempts=attempts+1,error=?,next_attempt=? WHERE key=?",
-                ("failed" if permanent else "pending", message, time.time() + delay, key),
+                "UPDATE user_job_state SET status=?,attempts=attempts+1,error=?,next_attempt=? "
+                "WHERE user_id=? AND job_key=?",
+                ("failed" if permanent else "pending", message, time.time() + delay, user_id, key),
             )
 
-    def retry_failed(self):
+    def retry_failed(self, user_id=1):
         with self.db:
-            self.db.execute("UPDATE jobs SET status='pending',next_attempt=0 WHERE status='failed'")
+            self.db.execute(
+                "UPDATE user_job_state SET status='pending',next_attempt=0 "
+                "WHERE user_id=? AND status='failed'",
+                (user_id,),
+            )
 
-    def summary(self):
+    def summary(self, user_id=1):
         counts = {
             row[0]: row[1]
-            for row in self.db.execute("SELECT status,count(*) FROM jobs GROUP BY status")
+            for row in self.db.execute(
+                "SELECT status,count(*) FROM user_job_state WHERE user_id=? GROUP BY status",
+                (user_id,),
+            )
         }
         latency = self.db.execute(
-            "SELECT avg((sent_at-first_seen)*1000) FROM jobs WHERE status='sent'"
+            "SELECT avg((state.sent_at-state.detected_at)*1000) FROM user_job_state state "
+            "JOIN jobs ON jobs.key=state.job_key WHERE state.user_id=? AND state.status='sent'",
+            (user_id,),
         ).fetchone()[0]
         return {
             "jobs": sum(counts.values()),

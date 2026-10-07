@@ -48,7 +48,7 @@ def ui_server(tmp_path_factory):
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 try:
-                    if client.get(url + "/api/status").status_code == 200:
+                    if client.get(url + "/api/status").status_code in (200, 401):
                         break
                 except httpx.HTTPError:
                     pass
@@ -72,6 +72,10 @@ def page(ui_server):
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(ui_server)
+        page.locator("#auth-dialog").wait_for(state="visible")
+        page.locator("#login-username").fill("admin")
+        page.locator("#login-password").fill("admin@")
+        page.get_by_role("button", name="Sign in", exact=True).click()
         page.get_by_text("Radar online", exact=True).wait_for()
         yield page
         assert not errors, errors
@@ -222,6 +226,24 @@ def test_rejected_recruiter_ban_closes_popup_and_shows_reason(page):
     page.locator("#toast").get_by_text(
         "Can't ban this recruiter: Enter an identifiable company name", exact=True
     ).wait_for(state="visible")
+
+
+def test_account_registration_and_private_telegram_settings(page):
+    page.evaluate('document.getElementById("auth-dialog").showModal()')
+    page.get_by_role("button", name="Create an account", exact=True).click()
+    page.locator("#register-username").fill("ui_private_user")
+    page.locator("#register-password").fill("ui-private-pass-123")
+    page.get_by_role("button", name="Create account", exact=True).click()
+    page.locator("#auth-dialog").wait_for(state="hidden")
+    page.locator("#current-user").get_by_text("ui_private_user", exact=True).wait_for()
+    assert page.locator("#users-nav").is_hidden()
+
+    page.get_by_role("button", name="Telegram delivery").click()
+    page.locator("#telegram-token").fill("private-test-bot-token")
+    page.locator("#telegram-chat-id").fill("123456")
+    page.get_by_role("button", name="Save bot settings", exact=True).click()
+    page.get_by_role("heading", name="Credentials configured", exact=True).wait_for()
+    assert page.locator("#telegram-token").input_value() == ""
 
 
 def test_blocked_recruiter_tab_add_remove(page):
