@@ -27,9 +27,16 @@ jobs:
       - name: Install browser dependencies on hosted PR runner
         if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
         run: python -m playwright install-deps chromium
-      - run: python -m pytest -q
+      - run: python -m pytest -q --junitxml=pytest-report.xml
         env:
           RUN_UI_TESTS: '1'
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: ignore
       - name: Build app and browser images
         env:
           APP_ACCESS_TOKEN: ci-build-only
