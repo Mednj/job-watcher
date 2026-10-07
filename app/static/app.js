@@ -69,12 +69,27 @@ async function api(path, options = {}) {
     throw new Error("Enter your access token to connect.");
   }
   const data = await response.json();
-  if (!response.ok)
-    throw new Error(
-      typeof data.detail === "string"
-        ? data.detail
-        : "Check the form values and try again.",
-    );
+  if (!response.ok) {
+    const detail = data.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail
+              .map((issue) => {
+                const reason = String(issue.msg || "Invalid value").replace(
+                  /^Value error,\s*/,
+                  "",
+                );
+                const field = Array.isArray(issue.loc)
+                  ? issue.loc.filter((part) => part !== "body").join(" → ")
+                  : "";
+                return field ? `${field}: ${reason}` : reason;
+              })
+              .join("; ")
+          : "The request was rejected. Check the form values and try again.";
+    throw new Error(message);
+  }
   return data;
 }
 function page(name) {
@@ -454,7 +469,8 @@ $("application-ban").addEventListener("click", async () => {
     await banRecruiter(job.company);
     $("application-dialog").close();
   } catch (error) {
-    toast(error.message, true);
+    $("application-dialog").close();
+    toast(`Can't ban this recruiter: ${error.message.replace(/^name:\s*/i, "")}`, true);
   } finally {
     $("application-ban").disabled = false;
   }

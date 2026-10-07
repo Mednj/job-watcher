@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import subprocess
@@ -141,8 +142,6 @@ def test_job_text_cannot_inject_html(page):
 
 
 def test_applied_popup_and_undo(page):
-    import json
-
     job = {
         "key": "linkedin:999",
         "source": "linkedin",
@@ -180,6 +179,49 @@ def test_applied_popup_and_undo(page):
     page.get_by_role("button", name="Undo applied", exact=True).click()
     page.locator(".job:not(.applied)").wait_for()
     assert not job["applied"]
+
+
+def test_rejected_recruiter_ban_closes_popup_and_shows_reason(page):
+    job = {
+        "key": "hellowork:78824163",
+        "source": "hellowork",
+        "title": "Example role",
+        "company": "Not listed",
+        "location": "Paris - 75",
+        "contract": "CDI",
+        "url": "https://www.hellowork.com/fr-fr/emplois/78824163.html",
+        "status": "sent",
+        "first_seen": time.time(),
+        "applied": False,
+    }
+    page.route("**/api/jobs?*", lambda route: route.fulfill(json=[job]))
+
+    def reject_ban(route):
+        route.fulfill(
+            status=422,
+            json={
+                "detail": [
+                    {
+                        "loc": ["body", "name"],
+                        "msg": "Value error, Enter an identifiable company name",
+                        "type": "value_error",
+                    }
+                ]
+            },
+        )
+
+    page.route("**/api/recruiter-bans", reject_ban)
+    page.reload()
+    link = page.get_by_role("link", name="Example role")
+    link.wait_for()
+    link.evaluate('(element) => element.addEventListener("click", event => event.preventDefault())')
+    link.click()
+    page.locator("#application-dialog").wait_for(state="visible")
+    page.get_by_role("button", name="Ban recruiter", exact=True).click()
+    page.locator("#application-dialog").wait_for(state="hidden")
+    page.locator("#toast").get_by_text(
+        "Can't ban this recruiter: Enter an identifiable company name", exact=True
+    ).wait_for(state="visible")
 
 
 def test_blocked_recruiter_tab_add_remove(page):
