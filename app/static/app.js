@@ -372,6 +372,9 @@ $("search-form").addEventListener("submit", async (event) => {
   }
 });
 async function loadTelegramSettings() {
+  const form = $("telegram-settings-form");
+  form.setAttribute("aria-busy", "true");
+  for (const control of form.elements) control.disabled = true;
   try {
     const settings = await api("telegram/settings");
     $("telegram-chat-id").value = settings.chat_id || "";
@@ -381,6 +384,9 @@ async function loadTelegramSettings() {
       : "Paste your bot token from BotFather";
   } catch (error) {
     toast(error.message, true);
+  } finally {
+    for (const control of form.elements) control.disabled = false;
+    form.setAttribute("aria-busy", "false");
   }
 }
 async function refreshUsers() {
