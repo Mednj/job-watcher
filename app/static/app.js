@@ -468,7 +468,7 @@ $("user-form").addEventListener("submit", async (event) => {
 $("telegram-settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    await api("telegram/settings", {
+    const settings = await api("telegram/settings", {
       method: "PUT",
       body: JSON.stringify({
         bot_token: $("telegram-token").value,
@@ -476,6 +476,10 @@ $("telegram-settings-form").addEventListener("submit", async (event) => {
       }),
     });
     $("telegram-token").value = "";
+    if (state.status) {
+      state.status.telegram_configured = settings.configured;
+      renderStatus();
+    }
     toast("Your Telegram bot is saved for this account.");
     await refresh();
   } catch (error) {

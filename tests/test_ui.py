@@ -242,6 +242,9 @@ def test_account_registration_and_private_telegram_settings(page):
     page.locator("#telegram-token").fill("private-test-bot-token")
     page.locator("#telegram-chat-id").fill("123456")
     page.get_by_role("button", name="Save bot settings", exact=True).click()
+    page.locator("#toast").get_by_text(
+        "Your Telegram bot is saved for this account.", exact=True
+    ).wait_for(state="visible")
     page.get_by_role("heading", name="Credentials configured", exact=True).wait_for()
     assert page.locator("#telegram-token").input_value() == ""
 
