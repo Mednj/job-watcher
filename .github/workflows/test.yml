@@ -28,8 +28,12 @@ jobs:
         if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
         run: python -m playwright install-deps chromium
       - run: python -m pytest -q --junitxml=pytest-report.xml
+        continue-on-error: true
         env:
           RUN_UI_TESTS: '1'
+      - name: Report pytest failures
+        if: always()
+        run: python scripts/report_pytest_failures.py pytest-report.xml
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
