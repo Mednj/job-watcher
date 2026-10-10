@@ -177,6 +177,33 @@ async def test_delivery_retries_and_records_latency(store):
     assert store.summary()["average_detection_to_delivery_ms"] >= 0
 
 
+def test_latency_summary_uses_robust_median_and_preserves_slow_tail(store):
+    search = store.add_search(config())
+    for id in ("fast-1", "fast-2", "backlog"):
+        store.record_scan(search["id"], config(), [job(id)], 1)
+        store.delivery_sent(1, f"linkedin:{id}", 100)
+
+    store.db.execute(
+        "UPDATE user_job_state SET detected_at=sent_at-? WHERE job_key=?",
+        (2, "linkedin:fast-1"),
+    )
+    store.db.execute(
+        "UPDATE user_job_state SET detected_at=sent_at-? WHERE job_key=?",
+        (4, "linkedin:fast-2"),
+    )
+    store.db.execute(
+        "UPDATE user_job_state SET detected_at=sent_at-? WHERE job_key=?",
+        (86400, "linkedin:backlog"),
+    )
+    store.db.commit()
+
+    summary = store.summary()
+    assert summary["median_detection_to_delivery_ms"] == 4000
+    assert summary["p95_detection_to_delivery_ms"] == 86400000
+    assert summary["delayed_delivery_count"] == 1
+    assert summary["average_detection_to_delivery_ms"] > 28_000_000
+
+
 async def test_each_account_delivery_uses_its_own_bot_and_chat(tmp_path):
     store = Store(
         str(tmp_path / "personal-bots.sqlite3"),

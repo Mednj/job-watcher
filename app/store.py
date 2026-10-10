@@ -1,6 +1,8 @@
 import json
+import math
 import secrets
 import sqlite3
+import statistics
 import time
 from pathlib import Path
 
@@ -626,16 +628,31 @@ class Store:
                 (user_id,),
             )
         }
-        latency = self.db.execute(
-            "SELECT avg((state.sent_at-state.detected_at)*1000) FROM user_job_state state "
+        latency_rows = self.db.execute(
+            "SELECT (state.sent_at-state.detected_at)*1000 FROM user_job_state state "
             "JOIN jobs ON jobs.key=state.job_key WHERE state.user_id=? AND state.status='sent'",
             (user_id,),
-        ).fetchone()[0]
+        ).fetchall()
+        latencies = [max(0, row[0]) for row in latency_rows if row[0] is not None]
+        ordered_latencies = sorted(latencies)
+        median_latency = statistics.median(ordered_latencies) if ordered_latencies else None
+        p95_latency = (
+            ordered_latencies[math.ceil(0.95 * len(ordered_latencies)) - 1]
+            if ordered_latencies
+            else None
+        )
         return {
             "jobs": sum(counts.values()),
             "baseline": counts.get("baseline", 0),
             "pending": counts.get("pending", 0),
             "sent": counts.get("sent", 0),
             "failed": counts.get("failed", 0),
-            "average_detection_to_delivery_ms": latency,
+            # Keep the mean available to API clients, but display the median so a
+            # one-time unconfigured-Telegram backlog cannot dominate the dashboard.
+            "average_detection_to_delivery_ms": statistics.mean(latencies)
+            if latencies
+            else None,
+            "median_detection_to_delivery_ms": median_latency,
+            "p95_detection_to_delivery_ms": p95_latency,
+            "delayed_delivery_count": sum(delay > 300_000 for delay in latencies),
         }

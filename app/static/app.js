@@ -49,6 +49,14 @@ function age(timestamp) {
         ? `${Math.floor(seconds / 3600)}h ago`
         : date(timestamp);
 }
+function duration(milliseconds) {
+  const seconds = milliseconds / 1000;
+  return seconds < 60
+    ? `${seconds.toFixed(1)}s`
+    : seconds < 3600
+      ? `${(seconds / 60).toFixed(1)}m`
+      : `${(seconds / 3600).toFixed(1)}h`;
+}
 let toastTimer;
 function toast(message, error = false) {
   $("toast").textContent = message;
@@ -117,9 +125,14 @@ function renderStatus() {
   $("stat-searches").textContent = active.length;
   $("search-count").textContent = s.searches.length;
   $("stat-latency").textContent =
-    summary.average_detection_to_delivery_ms == null
+    summary.median_detection_to_delivery_ms == null
       ? "—"
-      : `${(summary.average_detection_to_delivery_ms / 1000).toFixed(1)}s`;
+      : duration(summary.median_detection_to_delivery_ms);
+  const p95 = summary.p95_detection_to_delivery_ms;
+  $("stat-latency-detail").textContent =
+    p95 == null
+      ? "Typical time after discovery"
+      : `All-time P95 ${duration(p95)} · ${summary.delayed_delivery_count} over 5m`;
   $("worker-label").textContent = s.monitor_running
     ? "Radar online"
     : "Monitoring stopped";
