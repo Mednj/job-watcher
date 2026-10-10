@@ -1,8 +1,9 @@
 # Running Job Watcher
 
-The first version is a single-user Python 3.13+ app with a local web dashboard,
-two independent source workers, SQLite persistence, and a durable Telegram queue.
-The original project README is preserved unchanged.
+Job Watcher is a multi-user Python 3.13+ app with a web dashboard, independent
+source workers, SQLite persistence, and a durable Telegram queue. Searches,
+opportunities, application status, blocked companies, and Telegram settings are
+scoped to the signed-in account.
 
 ## Start on Windows
 
@@ -67,10 +68,11 @@ The app does not poll `getUpdates` or register a webhook.
 - Subsequent newly discovered source IDs are also queued immediately. A job seen
   by overlapping searches on the same platform generates one alert. Cross-site
   duplicates are retained: identical titles can represent different vacancies.
-- The app checks only the newest result page (currently about 10–30 listings),
-  with LinkedIn restricted to the last 24 hours. It can miss listings during
-  high-volume bursts, long downtime, or incomplete provider search results.
-  Narrow searches improve coverage; full backfill/pagination is future work.
+- Result limits vary by source: LinkedIn and HelloWork read the newest result
+  page, Welcome to the Jungle returns a ranked window of about 10, France Travail
+  returns up to 20, and JobTeaser scans up to five pages by default. LinkedIn is
+  restricted to the last 24 hours. These limits can miss listings during
+  high-volume bursts, downtime, or incomplete provider search results.
 
 ## Timing and reliability
 
@@ -78,7 +80,11 @@ Each platform has its own worker. The delivery worker wakes when new jobs are
 stored, independent of the next poll. Every alert is persisted before sending.
 New jobs discovered while Telegram is unconfigured stay queued until setup.
 Successful delivery records both API round-trip duration and time from first
-detection to delivery. The dashboard displays the latter, including queue wait.
+detection to delivery. The dashboard displays the median discovery-to-delivery
+time, plus the all-time 95th percentile and the count of alerts taking over five
+minutes. The API also retains the arithmetic mean for clients that need it. A
+backlog while Telegram is not configured can create a long tail; queued messages
+wait and drain after the user's bot and chat are configured.
 
 Publication dates have limited precision: LinkedIn returns a calendar date and
 relative label; HelloWork cards expose a relative label. Those labels are
@@ -160,22 +166,29 @@ to run headless tests without downloading Chromium.
 
 ## Multiple websites per search
 
-Select LinkedIn, HelloWork, or both. Search criteria are shared; each platform
-has independent status, scheduling, and backoff. Check now checks all selected
-websites. Adding a platform starts its first scan; removing one stops monitoring
-while preserving job history. Existing searches retain their original websites.
-Edit them to add another website.
+Select any available sources for a search. Criteria are shared; each platform
+has independent status, scheduling, and backoff. Check now requests an immediate
+check of selected sources. Adding a platform starts its first scan; removing one
+stops monitoring while preserving job history. Existing searches retain their
+original sources until edited.
 
-The API accepts `sources: ["linkedin", "hellowork"]`. The legacy `source` field
-still works for single-platform clients. Empty source lists are rejected.
+The API accepts a list of selected sources. The legacy `source` field still
+works for single-platform clients. Empty source lists are rejected.
 
 ### Expanded platform coverage
 
-One search can select LinkedIn, HelloWork, Welcome to the Jungle, France Travail (formerly Pôle emploi), APEC, Glassdoor, Indeed, JobTeaser, and Monster.
+One search can select LinkedIn, HelloWork, Welcome to the Jungle, France Travail
+(formerly Pôle emploi), APEC, Glassdoor, Indeed, JobTeaser, and Monster.
 
 Welcome to the Jungle and France Travail public searches were verified locally. Welcome to the Jungle currently returns a ranked window of 10 results; France Travail returns 20. These integrations do not guarantee discovery of every new listing. Welcome to the Jungle uses native contract filtering; additional contract and city matching are local. City names must match the returned location text. Experience filters on these two integrations are currently unavailable and report an explicit error. France Travail alternance detection relies on the offer title, so listings without that wording can be missed.
 
-APEC, Glassdoor, Indeed, JobTeaser, and Monster returned access challenges during validation. Their dashboard entries are availability placeholders, not functioning scrapers. Selecting them reports an integration-unavailable error with backoff, independently of working sources. Approved feeds, APIs or another verified integration are needed before these entries can deliver jobs. No CAPTCHA bypass is implemented. Existing saved searches retain their selected platforms; edit a search to add the new ones.
+APEC, Glassdoor, Indeed, and Monster are availability placeholders, not
+functioning adapters. APEC and Indeed returned HTTP 403 from the deployed server
+during read-only checks; the exact denial reason was not provided. Selecting a
+placeholder reports an integration-unavailable error with backoff, not a
+successful empty search. An approved feed or another authorized integration is
+needed. No CAPTCHA bypass is implemented. JobTeaser has a separate experimental
+browser adapter described below.
 
 ### Track applications
 
@@ -185,7 +198,10 @@ Click an opportunity title or “View & apply” in the dashboard to open the li
 
 The application popup includes “Ban recruiter”. This blocks the listing's company name, since individual recruiter identities are not provided by the sources. Manage the global list in the Blocked recruiters tab: add names manually or remove bans. Matching is exact after normalizing case, accents and whitespace. Blocked companies are excluded across every search and platform, including queued alerts and the existing dashboard feed. History remains stored and reappears if unblocked. Alerts already in transmission cannot be recalled.
 
-JobTeaser now has an optional experimental open-first/CDP browser reader. It is disabled until configured. The dedicated Chrome session and keyword navigation were verified against live results. See [JobTeaser setup and limitations](JOBTEASER.md#experimental-open-first-browser-adapter).
+JobTeaser has an experimental open-first/CDP browser reader. The deployed Compose
+stack starts its dedicated Chromium session, and a live search smoke test
+returned matching results. It stops on challenges and requires manual handling;
+it does not bypass them. See [JobTeaser setup and limitations](JOBTEASER.md#experimental-open-first-browser-adapter).
 
 
 ### Docker with a dedicated JobTeaser browser
