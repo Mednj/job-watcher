@@ -62,19 +62,19 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
         "url": "https://www.jobteaser.com/fr/job-offers/12345678-1234-1234-1234-123456789abc-example",
         "jobLocation": {"address": {"addressLocality": "Paris"}},
     }
-    html = (
-        "<title>Just a moment...</title>"
-        if challenge
-        else '<script type="application/ld+json">' + json.dumps(payload) + "</script>"
-    )
+    initial_html = "<title>Just a moment...</title>" if challenge else "<title>JobTeaser</title>"
+    results_html = '<script type="application/ld+json">' + json.dumps(payload) + "</script>"
     events = []
+    content_results = [initial_html] if challenge else [initial_html, results_html]
+    navigated = []
 
     async def content():
         events.append("read")
-        return html
+        return content_results.pop(0)
 
     async def reload(*args, **kwargs):
         events.append("reload")
+        navigated.append(args[0])
 
     page = SimpleNamespace(
         url="https://www.jobteaser.com/fr/job-offers",
@@ -103,6 +103,7 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
     else:
         assert len(await fetch_browser(search)) == 1
         assert events == ["read", "reload", "read"]
+        assert "q=cloud" in navigated[0]
     connect.assert_awaited_once_with("http://127.0.0.1:9223", timeout=10000, no_defaults=True)
     browser.close.assert_awaited_once()
 

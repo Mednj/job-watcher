@@ -42,11 +42,20 @@ def is_search_page(url):
     )
 
 
-def parse_page(html, page_url):
+def raise_if_challenge(html):
+    """Stop on an already-visible challenge without requiring listings on the tab."""
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(" ", strip=True).casefold() if soup.title else ""
-    if any(marker in title for marker in ("security", "just a moment", "checkup")):
+    body = soup.get_text(" ", strip=True).casefold()
+    if any(marker in title for marker in ("security", "just a moment", "checkup")) or any(
+        marker in body for marker in ("verify you are human", "security check", "captcha")
+    ):
         raise SourceError("JobTeaser security challenge: complete it manually in the browser", 300)
+
+
+def parse_page(html, page_url):
+    soup = BeautifulSoup(html, "html.parser")
+    raise_if_challenge(html)
     jobs = {}
     cards = soup.select('[data-testid="jobad-card"]')
     for card in cards:
@@ -249,8 +258,9 @@ async def fetch_browser(search):
                             300,
                         )
                     page = pages[0]
-                    # Read the already-loaded page first. Do not refresh a manual challenge.
-                    parse_page(await page.content(), page.url)
+                    # Inspect the already-loaded tab first. Do not refresh a manual challenge,
+                    # but a normal landing page is not expected to contain search results.
+                    raise_if_challenge(await page.content())
                     keyword = (
                         "informatique" if normalize(search.keywords) == "it" else search.keywords
                     )
