@@ -18,6 +18,18 @@ class Store:
         self.db.create_function("normalize_company", 1, normalize, deterministic=True)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
+        # `jobs` is shared across accounts, so it is safe to copy its legacy delivery
+        # state to admin only when upgrading a pre-account database. Detect that
+        # schema before the multi-user migration adds searches.user_id below.
+        searches_exists = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='searches'"
+        ).fetchone()
+        legacy_single_user_db = bool(
+            searches_exists
+            and "user_id" not in {
+                row[1] for row in self.db.execute("PRAGMA table_info(searches)")
+            }
+        )
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -107,14 +119,17 @@ class Store:
             self.db.execute(
                 "ALTER TABLE user_job_state ADD COLUMN last_seen REAL NOT NULL DEFAULT 0"
             )
-        # Preserve legacy alert state and application markers for the initial administrator.
-        self.db.execute(
-            "INSERT OR IGNORE INTO user_job_state "
-            "(user_id,job_key,status,attempts,next_attempt,sent_at,delivery_ms,error,applied,"
-            "detected_at,last_seen) "
-            "SELECT 1,key,status,attempts,next_attempt,sent_at,delivery_ms,error,"
-            "COALESCE(applied,0),first_seen,last_seen FROM jobs"
-        )
+        # Preserve alert state and application markers only during the one-time
+        # migration from the old single-user schema. On a multi-user database this
+        # would assign shared listings discovered by any account to the admin.
+        if legacy_single_user_db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO user_job_state "
+                "(user_id,job_key,status,attempts,next_attempt,sent_at,delivery_ms,error,applied,"
+                "detected_at,last_seen) "
+                "SELECT 1,key,status,attempts,next_attempt,sent_at,delivery_ms,error,"
+                "COALESCE(applied,0),first_seen,last_seen FROM jobs"
+            )
         self.db.execute(
             "UPDATE user_job_state SET "
             "detected_at=(SELECT first_seen FROM jobs WHERE key=job_key), "

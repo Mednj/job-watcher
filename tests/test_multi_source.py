@@ -158,6 +158,47 @@ def test_single_user_database_migrates_to_private_admin_without_data_loss(tmp_pa
     store.close()
 
 
+def test_restart_does_not_backfill_another_users_listing_into_admin(tmp_path):
+    path = str(tmp_path / "multi-user-restart.sqlite3")
+    store = Store(path, telegram_token="admin-token", telegram_chat_id="admin-chat")
+    admin_search_config = SearchInput(
+        name="Java", keywords="java", sources=["linkedin"]
+    )
+    store.add_search(admin_search_config, user_id=1)
+
+    other_user = store.add_user("private-user", "private-password")
+    store.save_telegram_settings(other_user["id"], "other-token", "other-chat")
+    other_search_config = SearchInput(
+        name="Supply chain", keywords="supply chain", sources=["linkedin"]
+    )
+    other_search = store.add_search(other_search_config, user_id=other_user["id"])
+    listing = Job(
+        "linkedin",
+        "private-listing",
+        "Supply chain manager",
+        "Example employer",
+        "Paris",
+        "https://www.linkedin.com/jobs/view/private-listing/",
+    )
+    assert store.record_scan(
+        other_search["id"], other_search_config.for_source("linkedin"), [listing], 10
+    ) == 1
+    assert store.jobs(user_id=1) == []
+    store.close()
+
+    # Store startup used to copy every global pending job into user 1, causing
+    # listings found only by another account to be queued for the admin's bot.
+    store = Store(path)
+    assert store.jobs(user_id=1) == []
+    assert [job["key"] for job in store.jobs(user_id=other_user["id"])] == [listing.key]
+    delivery = store.next_delivery(configured_only=True)
+    assert delivery["key"] == listing.key
+    assert delivery["user_id"] == other_user["id"]
+    assert delivery["telegram_token"] == "other-token"
+    assert delivery["telegram_chat_id"] == "other-chat"
+    store.close()
+
+
 def test_multi_source_api_validates_selection_and_legacy_compatibility(tmp_path):
     settings = Settings(database=str(tmp_path / "api.sqlite3"))
     with TestClient(create_app(settings, run_monitor=False)) as client:
