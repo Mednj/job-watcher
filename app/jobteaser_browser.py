@@ -252,6 +252,19 @@ async def fetch_browser(search):
                         for page in context.pages
                         if is_search_page(page.url)
                     ]
+                    if not pages and len(browser.contexts) == 1 and not browser.contexts[0].pages:
+                        # Recover a closed tab in the existing dedicated profile.
+                        # Never replace an existing login/challenge or choose between tabs.
+                        pages = [await browser.contexts[0].new_page()]
+                    elif not pages and len(browser.contexts) == 1:
+                        existing = browser.contexts[0].pages
+                        if len(existing) == 1 and existing[0].url in (
+                            "about:blank",
+                            "chrome-error://chromewebdata/",
+                        ):
+                            # A failed navigation (for example HTTP 502) can replace
+                            # the tab URL with Chromium's internal error-page URL.
+                            pages = existing
                     if len(pages) != 1:
                         raise SourceError(
                             "Open exactly one JobTeaser results tab in the dedicated browser",

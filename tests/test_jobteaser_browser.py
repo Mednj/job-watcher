@@ -108,6 +108,62 @@ async def test_attach_reads_existing_page_before_refresh(monkeypatch, challenge)
     browser.close.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["closed", "error", "blank", "login", "multiple", "challenge"])
+async def test_closed_tab_recovery_preserves_existing_tabs(monkeypatch, state):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.jobteaser_browser import fetch_browser
+    from app.models import SearchInput
+
+    monkeypatch.setenv("JOBTEASER_CDP_ENDPOINT", "http://127.0.0.1:9223")
+    page = SimpleNamespace(
+        url="https://www.jobteaser.com/fr/job-offers",
+        content=AsyncMock(return_value="<title>JobTeaser</title>"),
+    )
+    existing = []
+    if state in ("error", "blank"):
+        page.url = "chrome-error://chromewebdata/" if state == "error" else "about:blank"
+        existing = [page]
+    elif state == "login":
+        existing = [SimpleNamespace(url="https://www.jobteaser.com/fr/users/sign_in")]
+    elif state == "multiple":
+        existing = [page, page]
+    elif state == "challenge":
+        existing = [page]
+        page.content.return_value = "<title>Security checkup</title>"
+    context = SimpleNamespace(pages=existing, new_page=AsyncMock(return_value=page))
+    browser = SimpleNamespace(contexts=[context], close=AsyncMock())
+
+    class Manager:
+        async def __aenter__(self):
+            return SimpleNamespace(
+                chromium=SimpleNamespace(connect_over_cdp=AsyncMock(return_value=browser))
+            )
+
+        async def __aexit__(self, *args):
+            pass
+
+    monkeypatch.setattr("playwright.async_api.async_playwright", Manager)
+    collect = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.jobteaser_browser.collect_pages", collect)
+    search = SearchInput(name="Cloud", source="jobteaser", keywords="cloud")
+    if state in ("closed", "error", "blank"):
+        assert await fetch_browser(search) == []
+        if state == "closed":
+            context.new_page.assert_awaited_once()
+        else:
+            context.new_page.assert_not_awaited()
+        collect.assert_awaited_once()
+    else:
+        with pytest.raises(SourceError):
+            await fetch_browser(search)
+        context.new_page.assert_not_awaited()
+        collect.assert_not_awaited()
+    browser.close.assert_awaited_once()
+
+
 def test_jobteaser_real_card_structure_and_empty_detection():
     html = """<div data-testid="jobad-card">
 <p data-testid="jobad-card-company-name">Example</p>

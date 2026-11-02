@@ -41,6 +41,22 @@ def test_anonymous_employer_is_a_valid_listing():
     assert job.company == "Not listed"
 
 
+def test_hellowork_span_heading_preserves_job_fields():
+    html = HELLOWORK.replace("<p>", "<span>").replace("</p>", "</span>")
+    job = parse_hellowork(html)[0]
+    assert job.title == "Développeur DevOps H/F"
+    assert job.company == "Example"
+    assert job.location == "Lyon - 69"
+    assert job.contract == "Alternance"
+    assert job.key == "hellowork:456"
+    assert job.published_label == "moins d'une heure"
+
+
+def test_hellowork_malformed_card_does_not_hide_partial_failure():
+    with pytest.raises(SourceError, match="card structure changed"):
+        parse_hellowork(HELLOWORK + '<div data-cy="serpCard"><h3>Broken</h3></div>')
+
+
 @pytest.mark.parametrize("parser", [parse_linkedin, parse_hellowork])
 def test_challenge_is_not_an_empty_success(parser):
     with pytest.raises(SourceError):

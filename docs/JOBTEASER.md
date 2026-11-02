@@ -21,6 +21,12 @@ Official recruiter integration information: https://recruiter.jobteaser.com/en/j
 
 ## Open-first browser adapter
 
+If the dedicated browser is still running but has no tabs, the reader now opens
+a results tab in its existing profile. A single blank or Chromium internal error
+tab (for example after an HTTP 502) is reused for the next search. It does not replace login pages, navigate
+past security challenges, or choose between multiple results tabs. Those states
+still require manual attention in the private browser viewer.
+
 Verified live on 2026-10-05 with the user's manually opened dedicated Chrome session. Attachment succeeded, and successive keyword searches returned 16 DevOps matches and 3 cloud matches located in France. These are validation counts, not promises of complete coverage.
 
 The browser must be opened normally with a separate profile before automation connects. Keep exactly one JobTeaser search-results tab open and complete any login or security checks manually. The adapter attaches over local CDP, verifies the existing page, navigates to each search using the observed `q` parameter, reads the cards, then disconnects without closing Chrome. It never solves challenges.

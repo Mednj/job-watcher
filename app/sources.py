@@ -64,8 +64,10 @@ def parse_hellowork(html: str) -> list[Job]:
         if not link:
             raise SourceError("HelloWork job card structure changed; check the parser")
         match = re.search(r"/emplois/(\d+)\.html", link.get("href", ""))
-        title = text(link, "h3 p:first-child")
-        company = text(link, "h3 p:nth-child(2)")
+        # HelloWork changed the heading's direct children from paragraphs to spans.
+        # Keep the legacy format, but do not accept arbitrary heading text as a title.
+        title = text(link, "h3 > p:first-child, h3 > span:first-child")
+        company = text(link, "h3 > p:nth-child(2), h3 > span:nth-child(2)")
         if not match or not title:
             raise SourceError("HelloWork job card structure changed; check the parser")
         source_id = match[1]
