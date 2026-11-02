@@ -14,7 +14,8 @@ jobs:
   test:
     name: Tests and Docker builds
     runs-on: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && fromJSON('["self-hosted", "Linux", "X64", "job-watcher"]') || 'ubuntu-24.04' }}
-    timeout-minutes: 25
+    # Cold Chromium builds on the VM's storage can exceed the old 25-minute limit.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
