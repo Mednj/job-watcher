@@ -7,6 +7,7 @@
     <title>Job Watcher · Your next move</title>
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/app.js" defer></script>
+    <script src="/static/tracking.js" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -25,6 +26,9 @@
           </button>
           <button class="nav-item" data-page="searches">
             <span>⌕</span> Saved searches <b id="search-count">0</b>
+          </button>
+          <button class="nav-item" data-page="applications">
+            <span>✓</span> My applications <b id="tracking-count">0</b>
           </button>
           <button class="nav-item" data-page="delivery">
             <span>↗</span> Telegram delivery
@@ -49,7 +53,12 @@
           <span
             ><span class="dot" id="worker-dot"></span>
             <span id="worker-label">Connecting to your radar…</span></span
-          ><span class="account-actions"><span id="current-user"></span><button class="text-button" id="change-password">Password</button><button class="text-button" id="logout">Sign out</button><span id="updated">LOCAL WORKSPACE</span></span>
+          ><span class="account-actions"
+            ><span id="current-user"></span
+            ><button class="text-button" id="change-password">Password</button
+            ><button class="text-button" id="logout">Sign out</button
+            ><span id="updated">LOCAL WORKSPACE</span></span
+          >
         </header>
         <section class="page active" id="page-radar">
           <div class="heading-row">
@@ -76,7 +85,9 @@
             <article class="stat">
               <span>DETECTION → DELIVERY · MEDIAN</span
               ><strong id="stat-latency">—</strong
-              ><small id="stat-latency-detail">Typical time after discovery</small>
+              ><small id="stat-latency-detail"
+                >Typical time after discovery</small
+              >
             </article>
             <article class="stat">
               <span>ACTIVE SEARCHES</span><strong id="stat-searches">0</strong
@@ -176,6 +187,58 @@
             actual interval.
           </p>
         </section>
+        <section class="page" id="page-applications">
+          <div class="heading-row">
+            <div>
+              <p class="eyebrow">FROM APPLICATION TO YOUR NEXT CHAPTER</p>
+              <h1>My applications<span>.</span></h1>
+              <p class="subtitle">
+                Your confirmed applications, with progress you control.
+              </p>
+            </div>
+          </div>
+          <div
+            id="tracking-summary"
+            class="tracking-summary"
+            role="group"
+            aria-label="Application status counts"
+          ></div>
+          <div class="feed-header">
+            <h2>Application tracker</h2>
+            <div class="feed-tools">
+              <label class="sr-only" for="tracking-query"
+                >Search tracked applications</label
+              >
+              <input
+                id="tracking-query"
+                type="search"
+                maxlength="200"
+                placeholder="Search role or company…"
+              />
+              <label class="sr-only" for="tracking-filter"
+                >Filter application status</label
+              >
+              <select id="tracking-filter">
+                <option value="">All statuses</option>
+              </select>
+            </div>
+          </div>
+          <p id="tracking-error" class="search-error" role="alert"></p>
+          <div
+            id="tracking-list"
+            class="tracking-list"
+            aria-live="polite"
+          ></div>
+          <div class="tracking-pagination">
+            <button class="secondary" id="tracking-prev">Previous</button>
+            <span id="tracking-range" class="muted"></span>
+            <button class="secondary" id="tracking-next">Next</button>
+          </div>
+          <p class="footnote">
+            Only offers you confirmed as applied and explicitly added appear
+            here. Update their status manually; Gmail sync is not connected.
+          </p>
+        </section>
         <section class="page" id="page-bans">
           <div class="heading-row">
             <div>
@@ -214,9 +277,30 @@
                 Add your personal bot credentials below.
               </p>
               <form id="telegram-settings-form" class="stack-form">
-                <label>Bot API token<input id="telegram-token" type="password" autocomplete="new-password" placeholder="Saved token stays hidden" /></label>
-                <label>Telegram chat ID<input id="telegram-chat-id" autocomplete="off" required /></label>
-                <div class="button-row"><button class="primary" type="submit">Save bot settings</button><button class="secondary" type="button" id="disconnect-telegram">Disconnect</button></div>
+                <label
+                  >Bot API token<input
+                    id="telegram-token"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="Saved token stays hidden"
+                /></label>
+                <label
+                  >Telegram chat ID<input
+                    id="telegram-chat-id"
+                    autocomplete="off"
+                    required
+                /></label>
+                <div class="button-row">
+                  <button class="primary" type="submit">
+                    Save bot settings</button
+                  ><button
+                    class="secondary"
+                    type="button"
+                    id="disconnect-telegram"
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </form>
               <div class="button-row">
                 <button class="primary" id="test-telegram">
@@ -251,17 +335,43 @@
           </div>
         </section>
         <section class="page" id="page-users">
-          <div class="heading-row"><div><p class="eyebrow">PRIVATE RADARS, SEPARATE ACCOUNTS</p><h1>Account management<span>.</span></h1><p class="subtitle">Create and disable accounts. Each person has their own searches, history, recruiter blocks, and Telegram bot.</p></div></div>
+          <div class="heading-row">
+            <div>
+              <p class="eyebrow">PRIVATE RADARS, SEPARATE ACCOUNTS</p>
+              <h1>Account management<span>.</span></h1>
+              <p class="subtitle">
+                Create and disable accounts. Each person has their own searches,
+                history, recruiter blocks, and Telegram bot.
+              </p>
+            </div>
+          </div>
           <form id="user-form" class="stack-form account-form">
-            <label>Username<input id="new-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]+" required /></label>
-            <label>Temporary password<input id="new-password" type="password" minlength="10" maxlength="256" autocomplete="new-password" required /></label>
+            <label
+              >Username<input
+                id="new-username"
+                minlength="3"
+                maxlength="40"
+                pattern="[A-Za-z0-9_.-]+"
+                required
+            /></label>
+            <label
+              >Temporary password<input
+                id="new-password"
+                type="password"
+                minlength="10"
+                maxlength="256"
+                autocomplete="new-password"
+                required
+            /></label>
             <button class="primary" type="submit">Create account</button>
           </form>
           <div id="user-list" class="searches-list"></div>
         </section>
         <footer>
           <span>JOB WATCHER</span
-          ><span>Built for your next chapter. <span class="mint">↗</span></span>
+          ><span
+            >Built for your next chapter. <span class="mint">↗</span></span
+          >
         </footer>
       </main>
     </div>
@@ -431,11 +541,15 @@
           Find your chat ID using Telegram’s <code>getUpdates</code> API. Follow
           the instructions in <code>docs/RUNNING.md</code>.
         </li>
-        <li>In Job Watcher, open <b>Telegram delivery</b> and save the bot token and chat ID in your personal settings.</li>
+        <li>
+          In Job Watcher, open <b>Telegram delivery</b> and save the bot token
+          and chat ID in your personal settings.
+        </li>
         <li>Select <b>Send test message</b> to verify your connection.</li>
       </ol>
       <p class="info-note compact">
-        Your bot token is stored on the server for your account and is never shown again after saving.
+        Your bot token is stored on the server for your account and is never
+        shown again after saving.
       </p>
       <div class="dialog-actions">
         <button class="primary" data-close="setup-dialog">Got it</button>
@@ -446,32 +560,86 @@
         <p class="eyebrow">YOUR PRIVATE RADAR</p>
         <h2>Sign in to Job Watcher</h2>
         <p class="muted">
-          Each account has private searches, opportunities, and notification settings.
+          Each account has private searches, opportunities, and notification
+          settings.
         </p>
-        <label>Username<input id="login-username" autocomplete="username" required /></label>
-        <label>Password<input type="password" id="login-password" autocomplete="current-password" required /></label>
-        <p class="muted compact">Initial remote administrator: username <b>admin</b>, password is the original <code>APP_ACCESS_TOKEN</code> used when this database was first started. Local development without that setting uses <code>admin@</code>. Change it after signing in.</p>
+        <label
+          >Username<input id="login-username" autocomplete="username" required
+        /></label>
+        <label
+          >Password<input
+            type="password"
+            id="login-password"
+            autocomplete="current-password"
+            required
+        /></label>
+        <p class="muted compact">
+          Initial remote administrator: username <b>admin</b>, password is the
+          original <code>APP_ACCESS_TOKEN</code> used when this database was
+          first started. Local development without that setting uses
+          <code>admin@</code>. Change it after signing in.
+        </p>
         <p class="search-error" id="auth-error" role="alert"></p>
         <div class="dialog-actions">
           <button class="primary" type="submit">Sign in</button>
-          <button class="text-button" type="button" id="show-register">Create an account</button>
+          <button class="text-button" type="button" id="show-register">
+            Create an account
+          </button>
         </div>
       </form>
       <form id="register-form" class="hidden">
         <p class="eyebrow">A RADAR THAT’S YOURS</p>
         <h2>Create your account</h2>
-        <label>Username<input id="register-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]+" autocomplete="username" required /></label>
-        <label>Password<input id="register-password" type="password" minlength="10" maxlength="256" autocomplete="new-password" required /></label>
+        <label
+          >Username<input
+            id="register-username"
+            minlength="3"
+            maxlength="40"
+            pattern="[A-Za-z0-9_.-]+"
+            autocomplete="username"
+            required
+        /></label>
+        <label
+          >Password<input
+            id="register-password"
+            type="password"
+            minlength="10"
+            maxlength="256"
+            autocomplete="new-password"
+            required
+        /></label>
         <p class="search-error" id="register-error" role="alert"></p>
-        <div class="dialog-actions"><button class="primary" type="submit">Create account</button><button class="text-button" type="button" id="show-login">Back to sign in</button></div>
+        <div class="dialog-actions">
+          <button class="primary" type="submit">Create account</button
+          ><button class="text-button" type="button" id="show-login">
+            Back to sign in
+          </button>
+        </div>
       </form>
     </dialog>
     <dialog id="password-dialog">
       <form id="password-form">
         <h2>Change password</h2>
-        <label>Current password<input id="current-password" type="password" autocomplete="current-password" required /></label>
-        <label>New password<input id="replacement-password" type="password" minlength="10" autocomplete="new-password" required /></label>
-        <div class="dialog-actions"><button type="button" class="secondary" data-close="password-dialog">Cancel</button><button class="primary" type="submit">Update password</button></div>
+        <label
+          >Current password<input
+            id="current-password"
+            type="password"
+            autocomplete="current-password"
+            required
+        /></label>
+        <label
+          >New password<input
+            id="replacement-password"
+            type="password"
+            minlength="10"
+            autocomplete="new-password"
+            required
+        /></label>
+        <div class="dialog-actions">
+          <button type="button" class="secondary" data-close="password-dialog">
+            Cancel</button
+          ><button class="primary" type="submit">Update password</button>
+        </div>
       </form>
     </dialog>
     <dialog id="application-dialog" aria-labelledby="application-title">
@@ -489,6 +657,75 @@
           Decide later
         </button>
       </div>
+    </dialog>
+    <dialog id="tracking-prompt" aria-labelledby="tracking-prompt-title">
+      <h2 id="tracking-prompt-title">Track this application?</h2>
+      <p id="tracking-prompt-job" class="muted"></p>
+      <p>
+        Add it to My applications to keep track of interviews, offers, and
+        decisions.
+      </p>
+      <label
+        >Application date (optional)<input id="tracking-add-date" type="date"
+      /></label>
+      <p class="field-help">Leave blank if you don’t know when you applied.</p>
+      <p id="tracking-prompt-error" class="search-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="secondary" id="tracking-skip">No, thanks</button>
+        <button class="primary" id="tracking-add">Yes, track it</button>
+      </div>
+    </dialog>
+    <dialog id="tracking-detail" aria-labelledby="tracking-detail-title">
+      <form id="tracking-form">
+        <div class="dialog-heading">
+          <h2 id="tracking-detail-title">Application progress</h2>
+          <button
+            type="button"
+            class="close"
+            data-close="tracking-detail"
+            aria-label="Close application progress"
+          >
+            ×
+          </button>
+        </div>
+        <p id="tracking-detail-job" class="muted"></p>
+        <div class="form-row">
+          <label>Current status<select id="tracking-status"></select></label>
+          <label
+            >Application date (optional)<input id="tracking-date" type="date"
+          /></label>
+        </div>
+        <label
+          >Notes<textarea
+            id="tracking-notes"
+            rows="5"
+            maxlength="5000"
+            placeholder="Interview details, contacts, next steps…"
+          ></textarea>
+        </label>
+        <p id="tracking-save-error" class="search-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="secondary" data-close="tracking-detail">
+            Cancel
+          </button>
+          <button class="primary" id="tracking-save" type="submit">
+            Save progress
+          </button>
+        </div>
+        <details class="tracking-history">
+          <summary>Change history (latest 100)</summary>
+          <ol id="tracking-history"></ol>
+        </details>
+        <div class="tracking-remove">
+          <p class="muted">
+            Removing keeps the offer marked Applied. Adding it again restores
+            its saved progress and notes.
+          </p>
+          <button class="text-button" id="tracking-remove" type="button">
+            Remove from tracker
+          </button>
+        </div>
+      </form>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
   </body>

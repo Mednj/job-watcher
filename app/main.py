@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import Settings
 from app.models import (
     SOURCES,
+    ApplicationStatus,
     ApplicationUpdate,
     LoginInput,
     PasswordChange,
@@ -20,6 +21,8 @@ from app.models import (
     SearchInput,
     Source,
     TelegramSettings,
+    TrackingCreate,
+    TrackingUpdate,
     UserCreate,
 )
 from app.monitor import Monitor
@@ -293,6 +296,57 @@ def create_app(settings: Settings | None = None, run_monitor=True):
         ):
             raise HTTPException(404, "Opportunity not found")
         return {"key": job_key, "applied": update.applied}
+
+    @app.get("/api/applications")
+    async def applications(
+        request: Request,
+        status: ApplicationStatus | None = None,
+        q: str | None = Query(default=None, max_length=200),
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+    ):
+        return request.app.state.store.tracked_applications(
+            request.state.user["id"], status, q, limit, offset
+        )
+
+    @app.get("/api/applications/{job_key}")
+    async def application(job_key: str, request: Request):
+        result = request.app.state.store.tracked_application(job_key, request.state.user["id"])
+        if not result:
+            raise HTTPException(404, "Tracked application not found")
+        return result
+
+    @app.post("/api/applications/{job_key}")
+    async def track_application(job_key: str, data: TrackingCreate, request: Request):
+        try:
+            result = request.app.state.store.add_tracking(
+                job_key,
+                request.state.user["id"],
+                data.applied_on.isoformat() if data.applied_on else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if not result:
+            raise HTTPException(404, "Opportunity not found")
+        return result
+
+    @app.put("/api/applications/{job_key}")
+    async def edit_application(job_key: str, data: TrackingUpdate, request: Request):
+        try:
+            result = request.app.state.store.update_tracking(
+                job_key, request.state.user["id"], data
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if not result:
+            raise HTTPException(404, "Tracked application not found")
+        return result
+
+    @app.delete("/api/applications/{job_key}")
+    async def remove_application(job_key: str, request: Request):
+        if not request.app.state.store.remove_tracking(job_key, request.state.user["id"]):
+            raise HTTPException(404, "Tracked application not found")
+        return {"ok": True}
 
     @app.post("/api/searches", status_code=201)
     async def add_search(config: SearchInput, request: Request):

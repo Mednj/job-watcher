@@ -194,6 +194,24 @@ browser adapter described below.
 
 Click an opportunity title or “View & apply” in the dashboard to open the listing and a “Did you apply?” popup. Choose “Yes, I applied” after submitting: the card becomes grey and shows Applied. “Not yet” leaves it unmarked, and “Decide later” closes the popup. Use “Undo applied” to correct a mistake. This status persists across refreshes, restarts and repeated scans, independently of Telegram delivery. Clicks on direct job links inside Telegram cannot trigger this dashboard popup.
 
+After successfully confirming “Yes, I applied”, a separate prompt asks whether to
+track the application. “No, thanks”, Escape, or closing the page leaves it Applied
+without enrolling it. Existing applied offers are never enrolled automatically;
+use **Track application** on an applied opportunity card to add one later.
+
+Open **My applications** for status counts, title/company search, status filters,
+and paginated application cards. **Update progress** lets you set Applied,
+Interviewing, Offer received, Accepted, Rejected, or Withdrawn; record an optional
+application date; and save notes. Unknown dates remain blank for older applications.
+The latest 100 changes are shown in each application's history. Simultaneous edits
+are detected: close and reopen the editor to load the latest version before retrying.
+
+Removing an application keeps its Applied flag and saves its notes and history for
+re-adding later. Undoing Applied also removes it from the active tracker; confirming
+Applied again still requires a separate opt-in. Blocking a company does not hide
+applications you already chose to track. All tracker data is private to your account.
+Statuses are manual; Gmail integration is a separate future phase.
+
 ### Block recruiters
 
 The application popup includes “Ban recruiter”. This blocks the listing's company name, since individual recruiter identities are not provided by the sources. Manage the global list in the Blocked recruiters tab: add names manually or remove bans. Matching is exact after normalizing case, accents and whitespace. Blocked companies are excluded across every search and platform, including queued alerts and the existing dashboard feed. History remains stored and reappears if unblocked. Alerts already in transmission cannot be recalled.

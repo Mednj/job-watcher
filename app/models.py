@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from dataclasses import asdict, dataclass
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -159,6 +160,21 @@ class Job:
 
 class ApplicationUpdate(BaseModel):
     applied: bool = Field(strict=True)
+
+
+ApplicationStatus = Literal[
+    "applied", "interviewing", "offer_received", "accepted", "rejected", "withdrawn"
+]
+
+
+class TrackingCreate(BaseModel):
+    applied_on: date | None = None
+
+
+class TrackingUpdate(TrackingCreate):
+    status: ApplicationStatus
+    notes: str = Field(default="", max_length=5000)
+    version: int = Field(ge=1)
 
 
 class RecruiterBan(BaseModel):

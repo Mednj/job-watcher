@@ -27,4 +27,10 @@ Migrate the local SQLite database with an online backup while the local watcher 
 
 Deployments fail visibly on unhealthy containers. There is no automatic schema rollback. Retain database backups and redeploy a previously tested commit when needed, assessing schema compatibility first.
 
+Before replacing a running deployment, the script now validates its database
+backup, records a checksum, and pins both running images with a timestamped
+rollback override. See [tracking backup and rollback](TRACKING_ROLLBACK.md) for
+the verified pre-tracking baseline and recovery steps. The tracker migration is
+additive, so an image rollback normally keeps the current database.
+
 This installation uses a dedicated `job-runner` account and `/opt/job-watcher-runner`, independently of the PS5 app. The dashboard binds to the server LAN address on port 8000 with per-account authentication. The address was verified as 192.168.1.31 on 2026-11-02; it is DHCP-managed, so confirm it with `hostname -I` before deploying and reserve it in DHCP. Confirm current Compose status and the external route at https://job-watcher.yndevs.com/ before deployment. If the address changes, update the external proxy origin. The deployment script prints current addresses and Compose status before changing containers. The viewer remains loopback-only on port 7900. Browser test system dependencies are installed during provisioning; main CI needs no sudo. A public HTTPS hostname still requires the existing reverse proxy/DNS configuration.

@@ -74,6 +74,7 @@ async function api(path, options = {}) {
     },
   });
   if (response.status === 401 && path !== "auth/login") {
+    if (typeof clearTrackingWorkspace === "function") clearTrackingWorkspace();
     state.token = "";
     sessionStorage.removeItem("jw-token");
     if (!$("auth-dialog").open) $("auth-dialog").showModal();
@@ -204,7 +205,7 @@ function renderJobs() {
         )
           ? job.url
           : "#";
-      return `<article class="job${job.applied ? " applied" : ""}">${logo(job.source)}<div class="job-main"><h3><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}</div><div class="job-right">${job.applied ? '<div class="application-status"><span>✓ Applied</span><span aria-hidden="true">·</span><button aria-label="Undo applied" data-job-undo="' + esc(job.key) + '">Undo</button></div>' : `<span class="badge ${badge[1]}">${badge[0]}</span>`}<small>Found ${esc(age(job.first_seen))}</small><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
+      return `<article class="job${job.applied ? " applied" : ""}">${logo(job.source)}<div class="job-main"><h3><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(job.title)}</a></h3><p class="job-company">${esc(job.company)}</p><div class="job-meta"><span>⌖ ${esc(job.location)}</span><span class="job-contract">${esc(job.contract)}</span><span>${sourceName(job.source)}</span>${job.published_label ? `<span>Published ${esc(job.published_label)}</span>` : ""}</div>${job.error ? `<p class="search-error">${esc(job.error)}</p>` : ""}${job.applied ? `<button class="text-button" data-track-offer="${esc(job.key)}">${job.tracked ? "View progress" : "Track application"}</button>` : ""}</div><div class="job-right">${job.applied ? '<div class="application-status"><span>✓ Applied</span><span aria-hidden="true">·</span><button aria-label="Undo applied" data-job-undo="' + esc(job.key) + '">Undo</button></div>' : `<span class="badge ${badge[1]}">${badge[0]}</span>`}<small>Found ${esc(age(job.first_seen))}</small><a data-job-open="${esc(job.key)}" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">View & apply ↗</a></div></article>`;
     })
     .join("");
 }
@@ -246,6 +247,7 @@ async function refresh() {
     renderStatus();
     renderJobs();
     await refreshBans();
+    if (typeof refreshTracking === "function") await refreshTracking();
   } catch (error) {
     $("worker-label").textContent = error.message;
     $("worker-dot").classList.add("error");
@@ -478,7 +480,9 @@ $("user-form").addEventListener("submit", async (event) => {
       }),
     });
     $("user-form").reset();
-    toast("Account created. Share its username and temporary password securely.");
+    toast(
+      "Account created. Share its username and temporary password securely.",
+    );
     await refreshUsers();
   } catch (error) {
     toast(error.message, true);
@@ -519,15 +523,20 @@ $("user-list").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-user-active]");
   if (!button) return;
   try {
-    await api(`users/${button.dataset.userActive}/active?active=${button.dataset.active}`, {
-      method: "PATCH",
-    });
+    await api(
+      `users/${button.dataset.userActive}/active?active=${button.dataset.active}`,
+      {
+        method: "PATCH",
+      },
+    );
     await refreshUsers();
   } catch (error) {
     toast(error.message, true);
   }
 });
-$("change-password").addEventListener("click", () => $("password-dialog").showModal());
+$("change-password").addEventListener("click", () =>
+  $("password-dialog").showModal(),
+);
 $("password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -555,6 +564,7 @@ $("logout").addEventListener("click", async () => {
     sessionStorage.removeItem("jw-token");
     state.token = "";
     state.user = null;
+    clearTrackingWorkspace();
     $("auth-dialog").showModal();
   }
 });
@@ -606,9 +616,17 @@ async function saveApplication(key, applied) {
       body: JSON.stringify({ applied }),
     });
     const job = state.jobs.find((item) => item.key === key);
-    if (job) job.applied = applied;
+    if (job) {
+      job.applied = applied;
+      if (!applied) job.tracked = false;
+    }
     renderJobs();
-    toast(applied ? "Marked as applied." : "Marked as not applied.");
+    toast(
+      applied
+        ? "Marked as applied."
+        : "Marked as not applied and removed from tracking.",
+    );
+    if (!applied) await refreshTracking();
     return true;
   } catch (error) {
     toast(error.message, true);
@@ -621,8 +639,11 @@ for (const [id, applied] of [
 ]) {
   $(id).addEventListener("click", async () => {
     $("application-yes").disabled = $("application-no").disabled = true;
-    if (await saveApplication(applicationKey, applied))
+    const key = applicationKey;
+    if (await saveApplication(key, applied)) {
       $("application-dialog").close();
+      if (applied) showTrackingPrompt(key, true);
+    }
     $("application-yes").disabled = $("application-no").disabled = false;
   });
 }
@@ -664,7 +685,10 @@ $("application-ban").addEventListener("click", async () => {
     $("application-dialog").close();
   } catch (error) {
     $("application-dialog").close();
-    toast(`Can't ban this recruiter: ${error.message.replace(/^name:\s*/i, "")}`, true);
+    toast(
+      `Can't ban this recruiter: ${error.message.replace(/^name:\s*/i, "")}`,
+      true,
+    );
   } finally {
     $("application-ban").disabled = false;
   }

@@ -178,6 +178,8 @@ def test_applied_popup_and_undo(page):
     link.click()
     page.get_by_role("button", name="Yes, I applied", exact=True).click()
     page.locator(".job.applied").wait_for()
+    page.locator("#tracking-prompt").wait_for(state="visible")
+    page.get_by_role("button", name="No, thanks", exact=True).click()
     page.reload()
     page.locator(".job.applied").wait_for()
     page.get_by_role("button", name="Undo applied", exact=True).click()
@@ -258,3 +260,169 @@ def test_blocked_recruiter_tab_add_remove(page):
     page.get_by_role("heading", name="UI blocked company", exact=True).wait_for()
     page.get_by_role("button", name="Remove ban", exact=True).click()
     page.get_by_text("No blocked recruiters.", exact=True).wait_for()
+
+
+def test_application_tracking_flow_and_mobile_layout(page):
+    job = {
+        "key": "linkedin:tracking",
+        "source": "linkedin",
+        "title": "Cloud tracking test",
+        "company": "Example",
+        "location": "Paris",
+        "contract": "CDI",
+        "url": "https://www.linkedin.com/jobs/view/123/",
+        "status": "sent",
+        "first_seen": time.time(),
+        "applied": False,
+        "tracked": False,
+    }
+    record = None
+    page.route("**/api/jobs?*", lambda route: route.fulfill(json=[job]))
+
+    def apply(route):
+        job["applied"] = json.loads(route.request.post_data)["applied"]
+        route.fulfill(json={"key": job["key"], "applied": job["applied"]})
+
+    def listing(route):
+        from urllib.parse import parse_qs, urlparse
+
+        params = parse_qs(urlparse(route.request.url).query)
+        match = (
+            record
+            and job["tracked"]
+            and (not params.get("status") or params["status"][0] == record["status"])
+        )
+        route.fulfill(
+            json={
+                "items": [record] if match else [],
+                "total": int(bool(match)),
+                "counts": {record["status"]: 1} if record and job["tracked"] else {},
+            }
+        )
+
+    def application(route):
+        nonlocal record
+        method = route.request.method
+        if method == "POST":
+            data = json.loads(route.request.post_data)
+            if not record:
+                record = {
+                    **{k: job[k] for k in ("title", "company", "url", "location", "source")},
+                    "job_key": job["key"],
+                    "status": "applied",
+                    "notes": "",
+                    "applied_on": data.get("applied_on"),
+                    "version": 1,
+                    "created_at": time.time(),
+                    "updated_at": time.time(),
+                    "history": [],
+                }
+            job["tracked"] = True
+        elif method == "PUT":
+            record.update(json.loads(route.request.post_data))
+            record["version"] += 1
+            record["history"].insert(
+                0,
+                {
+                    "kind": "updated",
+                    "status": record["status"],
+                    "notes": record["notes"],
+                    "applied_on": record["applied_on"],
+                    "created_at": time.time(),
+                },
+            )
+        elif method == "DELETE":
+            job["tracked"] = False
+            route.fulfill(json={"ok": True})
+            return
+        route.fulfill(json=record)
+
+    page.route("**/api/jobs/linkedin%3Atracking/application", apply)
+    page.route("**/api/applications?*", listing)
+    page.route("**/api/applications/linkedin%3Atracking", application)
+    page.reload()
+    link = page.get_by_role("link", name=job["title"], exact=True)
+    link.wait_for()
+    link.evaluate('(element) => element.addEventListener("click", event => event.preventDefault())')
+    link.click()
+    page.get_by_role("button", name="Yes, I applied", exact=True).click()
+    page.locator("#tracking-prompt").wait_for(state="visible")
+    assert record is None  # Merely confirming applied must not enroll it.
+    page.get_by_role("button", name="No, thanks", exact=True).click()
+    page.get_by_role("button", name="My applications").click()
+    page.get_by_role("heading", name="Your next chapter starts here", exact=True).wait_for()
+    page.get_by_role("button", name="Opportunity radar").click()
+    page.get_by_role("button", name="Track application", exact=True).click()
+    assert page.locator("#tracking-add-date").input_value() == ""
+    page.locator("#tracking-add-date").fill("2026-11-03")
+    page.get_by_role("button", name="Yes, track it", exact=True).click()
+    page.locator("#tracking-prompt").wait_for(state="hidden")
+    page.get_by_role("button", name="My applications").click()
+    page.get_by_role("button", name="Update progress", exact=True).click()
+    page.locator("#tracking-status").select_option("interviewing")
+    note = '<img src=x onerror="window.trackingInjected=true"> Interview on Friday'
+    page.locator("#tracking-notes").fill(note)
+    page.get_by_role("button", name="Save progress", exact=True).click()
+    page.locator("#tracking-detail").wait_for(state="hidden")
+    page.locator(".tracking-badge.interviewing").wait_for()
+    assert page.locator(".tracking-note").inner_text() == note
+    assert not page.evaluate("Boolean(window.trackingInjected)")
+    assert page.locator("#tracking-list img").count() == 0
+    page.locator("#tracking-filter").select_option("rejected")
+    page.get_by_role("heading", name="No applications match these filters", exact=True).wait_for()
+    page.locator("#tracking-filter").select_option("")
+    page.locator(".tracking-card").wait_for()
+    screenshots = os.getenv("TRACKING_SCREENSHOTS")
+    if screenshots:
+        Path(screenshots).mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(Path(screenshots) / "tracking-desktop.png"), full_page=True)
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    if screenshots:
+        page.screenshot(path=str(Path(screenshots) / "tracking-mobile.png"), full_page=True)
+    page.get_by_role("button", name="Update progress", exact=True).click()
+    assert page.locator("#tracking-notes").input_value() == note
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    page.locator(".tracking-history summary").click()
+    assert page.locator("#tracking-history li").count() == 1
+    assert page.locator("#tracking-history img").count() == 0
+    page.get_by_role("button", name="Remove from tracker", exact=True).click()
+    page.get_by_role("heading", name="Your next chapter starts here", exact=True).wait_for()
+    assert job["applied"]
+    page.get_by_role("button", name="Opportunity radar").click()
+    page.get_by_role("button", name="Track application", exact=True).click()
+    page.get_by_role("button", name="Yes, track it", exact=True).click()
+    page.locator("#tracking-prompt").wait_for(state="hidden")
+    page.get_by_role("button", name="My applications").click()
+    page.locator(".tracking-badge.interviewing").wait_for()
+    assert record["notes"] == note
+
+
+def test_tracking_prompt_only_after_successful_application_save(page):
+    job = {
+        "key": "linkedin:failure",
+        "source": "linkedin",
+        "title": "Cloud failed save",
+        "company": "Example",
+        "location": "Paris",
+        "contract": "CDI",
+        "url": "https://www.linkedin.com/jobs/view/123/",
+        "status": "sent",
+        "first_seen": time.time(),
+        "applied": False,
+    }
+    page.route("**/api/jobs?*", lambda route: route.fulfill(json=[job]))
+    page.route(
+        "**/api/jobs/linkedin%3Afailure/application",
+        lambda route: route.fulfill(status=500, json={"detail": "Save failed"}),
+    )
+    page.reload()
+    link = page.get_by_role("link", name=job["title"], exact=True)
+    link.wait_for()
+    link.evaluate('(element) => element.addEventListener("click", event => event.preventDefault())')
+    link.click()
+    page.get_by_role("button", name="Yes, I applied", exact=True).click()
+    page.get_by_text("Save failed", exact=True).wait_for()
+    assert page.locator("#application-dialog").is_visible()
+    assert not page.locator("#tracking-prompt").is_visible()
+    page.get_by_role("button", name="Decide later", exact=True).click()

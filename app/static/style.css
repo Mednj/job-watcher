@@ -8,6 +8,178 @@
   --mint: #b8f2cf;
   --orange: #f4bb88;
 }
+textarea {
+  font: inherit;
+  background: #12191e;
+  border: 1px solid #354047;
+  color: var(--text);
+  padding: 12px;
+  border-radius: 6px;
+  width: 100%;
+  resize: vertical;
+  outline-offset: 4px;
+}
+.tracking-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 28px 0;
+}
+.tracking-stat {
+  flex: 1 1 110px;
+  text-align: left;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+}
+.tracking-stat strong {
+  display: block;
+  font-size: 25px;
+  margin-bottom: 7px;
+}
+.tracking-stat span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.tracking-stat.selected {
+  border-color: var(--mint);
+}
+.tracking-stat.selected strong {
+  color: var(--mint);
+}
+.tracking-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.tracking-list > .empty {
+  grid-column: 1 / -1;
+}
+.tracking-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 22px;
+}
+.tracking-card h3 {
+  margin: 20px 0 8px;
+  overflow-wrap: anywhere;
+}
+.tracking-card h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+.tracking-card h3 a:hover {
+  color: var(--mint);
+}
+.tracking-card p {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.tracking-card-top,
+.tracking-card-top > div,
+.tracking-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tracking-card-top .source-logo {
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+.tracking-card-top > div {
+  justify-content: flex-start;
+  font-size: 11px;
+}
+.tracking-badge {
+  border-radius: 20px;
+  padding: 6px 10px;
+  font-size: 11px;
+  background: #28353e;
+  color: #c1d9eb;
+  white-space: nowrap;
+}
+.tracking-badge.interviewing {
+  background: #3c3322;
+  color: var(--orange);
+}
+.tracking-badge.offer_received,
+.tracking-badge.accepted {
+  background: #223c2c;
+  color: var(--mint);
+}
+.tracking-badge.rejected {
+  background: #402a2d;
+  color: #f4aaa8;
+}
+.tracking-badge.withdrawn {
+  color: var(--muted);
+}
+.tracking-note {
+  min-height: 44px;
+  white-space: pre-wrap;
+}
+.tracking-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin: 24px 0;
+}
+.tracking-history {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.tracking-history summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.tracking-history ol {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-left: 22px;
+}
+.tracking-history li {
+  padding: 10px 5px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.tracking-history small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.tracking-history p {
+  white-space: pre-wrap;
+}
+.tracking-remove {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 10px;
+}
+@media (max-width: 800px) {
+  .tracking-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tracking-card {
+    padding: 18px;
+  }
+  .tracking-card-bottom {
+    flex-wrap: wrap;
+  }
+  .tracking-card-top {
+    gap: 8px;
+  }
+  .tracking-card-top > div > .muted {
+    max-width: 130px;
+  }
+}
 * {
   box-sizing: border-box;
 }
@@ -903,12 +1075,14 @@ pre {
   }
   .sidebar nav {
     display: flex;
+    flex-wrap: wrap;
     margin-top: 17px;
     gap: 6px;
   }
   .nav-item {
     width: auto;
-    flex: 1;
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 0;
     margin: 0;
     padding: 10px;
     font-size: 10px;

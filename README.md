@@ -22,6 +22,9 @@ job before another candidate or captures every listing on a site.
   and count of alerts taking over five minutes expose slow outliers.
 - **Persistent storage:** searches, source state, job history, user settings, and
   pending deliveries survive container restarts in the data volume.
+- **Application progress:** explicitly opt in after confirming you applied, then
+  manage statuses, dates, notes, and change history in **My applications**. Existing
+  applied offers are not added automatically. Gmail sync is not yet connected.
 
 ## Source availability
 

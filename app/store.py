@@ -26,9 +26,7 @@ class Store:
         ).fetchone()
         legacy_single_user_db = bool(
             searches_exists
-            and "user_id" not in {
-                row[1] for row in self.db.execute("PRAGMA table_info(searches)")
-            }
+            and "user_id" not in {row[1] for row in self.db.execute("PRAGMA table_info(searches)")}
         )
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS users (
@@ -86,6 +84,25 @@ class Store:
                 detected_at REAL NOT NULL DEFAULT 0, last_seen REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY(user_id, job_key)
             );
+            CREATE TABLE IF NOT EXISTS application_tracking (
+                user_id INTEGER NOT NULL, job_key TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'applied', notes TEXT NOT NULL DEFAULT '',
+                applied_on TEXT, active INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL, updated_at REAL NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY(user_id,job_key),
+                FOREIGN KEY(user_id,job_key) REFERENCES user_job_state(user_id,job_key)
+                    ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS application_events (
+                id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, job_key TEXT NOT NULL,
+                kind TEXT NOT NULL, status TEXT NOT NULL, notes TEXT NOT NULL,
+                applied_on TEXT, created_at REAL NOT NULL,
+                FOREIGN KEY(user_id,job_key) REFERENCES application_tracking(user_id,job_key)
+                    ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS application_events_job
+                ON application_events(user_id,job_key,id);
         """)
         if not self.db.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             # The pre-multi-user access token becomes the initial admin password.
@@ -535,6 +552,7 @@ class Store:
         data = dict(row)
         data.update(json.loads(data.pop("payload")))
         data["applied"] = bool(data["applied"])
+        data["tracked"] = bool(data.get("tracked", False))
         return data
 
     def jobs(self, limit=100, source=None, status=None, query=None, user_id=1):
@@ -559,7 +577,9 @@ class Store:
             "SELECT jobs.key,jobs.source,jobs.payload,state.detected_at AS first_seen,"
             "state.last_seen,"
             "state.status,state.attempts,state.next_attempt,state.sent_at,state.delivery_ms,"
-            "state.error,state.applied FROM jobs "
+            "state.error,state.applied,EXISTS(SELECT 1 FROM application_tracking t "
+            "WHERE t.user_id=state.user_id AND t.job_key=jobs.key AND t.active=1) AS tracked "
+            "FROM jobs "
             "JOIN user_job_state state ON state.job_key=jobs.key"
             + where
             + " AND state.user_id=? ORDER BY state.detected_at DESC,jobs.key LIMIT ?",
@@ -576,7 +596,141 @@ class Store:
                 "UPDATE user_job_state SET applied=? WHERE job_key=? AND user_id=?",
                 (int(applied), key, user_id),
             )
+            if not applied:
+                self._remove_tracking(key, user_id)
         return bool(result.rowcount)
+
+    def _tracking_event(self, key, user_id, kind):
+        self.db.execute(
+            "INSERT INTO application_events"
+            "(user_id,job_key,kind,status,notes,applied_on,created_at) "
+            "SELECT user_id,job_key,?,status,notes,applied_on,? FROM application_tracking "
+            "WHERE user_id=? AND job_key=?",
+            (kind, time.time(), user_id, key),
+        )
+
+    def _remove_tracking(self, key, user_id):
+        result = self.db.execute(
+            "UPDATE application_tracking SET active=0,updated_at=?,version=version+1 "
+            "WHERE user_id=? AND job_key=? AND active=1",
+            (time.time(), user_id, key),
+        )
+        if result.rowcount:
+            self._tracking_event(key, user_id, "removed")
+        return bool(result.rowcount)
+
+    def add_tracking(self, key, user_id, applied_on=None):
+        with self.db:
+            job = self.db.execute(
+                "SELECT applied FROM user_job_state WHERE user_id=? AND job_key=?",
+                (user_id, key),
+            ).fetchone()
+            if not job:
+                return None
+            if not job["applied"]:
+                raise ValueError("Confirm that you applied before adding this offer to tracking")
+            now = time.time()
+            result = self.db.execute(
+                "INSERT OR IGNORE INTO application_tracking "
+                "(user_id,job_key,applied_on,created_at,updated_at) VALUES (?,?,?,?,?)",
+                (user_id, key, applied_on, now, now),
+            )
+            if result.rowcount:
+                self._tracking_event(key, user_id, "added")
+            elif self.db.execute(
+                "UPDATE application_tracking SET active=1,updated_at=?,version=version+1 "
+                "WHERE user_id=? AND job_key=? AND active=0",
+                (now, user_id, key),
+            ).rowcount:
+                self._tracking_event(key, user_id, "readded")
+        return self.tracked_application(key, user_id)
+
+    @staticmethod
+    def _decode_tracking(row):
+        result = dict(row)
+        payload = json.loads(result.pop("payload"))
+        for field in ("title", "company", "location", "url"):
+            result[field] = payload.get(field, "")
+        result.pop("user_id")
+        return result
+
+    def tracked_application(self, key, user_id):
+        row = self.db.execute(
+            "SELECT t.*,j.payload,j.source FROM application_tracking t "
+            "JOIN jobs j ON j.key=t.job_key JOIN user_job_state s "
+            "ON s.user_id=t.user_id AND s.job_key=t.job_key "
+            "WHERE t.user_id=? AND t.job_key=? AND t.active=1 AND s.applied=1",
+            (user_id, key),
+        ).fetchone()
+        if not row:
+            return None
+        result = self._decode_tracking(row)
+        result["history"] = [
+            dict(event)
+            for event in self.db.execute(
+                "SELECT id,kind,status,notes,applied_on,created_at FROM application_events "
+                "WHERE user_id=? AND job_key=? ORDER BY id DESC LIMIT 100",
+                (user_id, key),
+            )
+        ]
+        return result
+
+    def tracked_applications(self, user_id, status=None, query=None, limit=50, offset=0):
+        base = (
+            " FROM application_tracking t JOIN jobs j ON j.key=t.job_key "
+            "JOIN user_job_state s ON s.user_id=t.user_id AND s.job_key=t.job_key "
+            "WHERE t.user_id=? AND t.active=1 AND s.applied=1"
+        )
+        counts = {
+            row["status"]: row["n"]
+            for row in self.db.execute(
+                "SELECT t.status,count(*) n" + base + " GROUP BY t.status", (user_id,)
+            )
+        }
+        params = [user_id]
+        if status:
+            base += " AND t.status=?"
+            params.append(status)
+        if query:
+            base += (
+                " AND instr(normalize_company(json_extract(j.payload,'$.title') || ' ' || "
+                "json_extract(j.payload,'$.company')),normalize_company(?))>0"
+            )
+            params.append(query)
+        total = self.db.execute("SELECT count(*)" + base, params).fetchone()[0]
+        rows = self.db.execute(
+            "SELECT t.*,j.payload,j.source"
+            + base
+            + " ORDER BY t.updated_at DESC,t.job_key LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        items = [self._decode_tracking(row) for row in rows]
+        return {"items": items, "total": total, "counts": counts}
+
+    def update_tracking(self, key, user_id, update):
+        with self.db:
+            current = self.tracked_application(key, user_id)
+            if not current:
+                return None
+            if current["version"] != update.version:
+                raise ValueError("This application changed. Close and reopen it before saving.")
+            applied_on = update.applied_on.isoformat() if update.applied_on else None
+            if (current["status"], current["notes"], current["applied_on"]) != (
+                update.status,
+                update.notes,
+                applied_on,
+            ):
+                self.db.execute(
+                    "UPDATE application_tracking SET status=?,notes=?,applied_on=?,updated_at=?,"
+                    "version=version+1 WHERE user_id=? AND job_key=?",
+                    (update.status, update.notes, applied_on, time.time(), user_id, key),
+                )
+                self._tracking_event(key, user_id, "updated")
+        return self.tracked_application(key, user_id)
+
+    def remove_tracking(self, key, user_id):
+        with self.db:
+            return self._remove_tracking(key, user_id)
 
     def next_delivery(self, configured_only=False):
         configured_clause = (
@@ -664,9 +818,7 @@ class Store:
             "failed": counts.get("failed", 0),
             # Keep the mean available to API clients, but display the median so a
             # one-time unconfigured-Telegram backlog cannot dominate the dashboard.
-            "average_detection_to_delivery_ms": statistics.mean(latencies)
-            if latencies
-            else None,
+            "average_detection_to_delivery_ms": statistics.mean(latencies) if latencies else None,
             "median_detection_to_delivery_ms": median_latency,
             "p95_detection_to_delivery_ms": p95_latency,
             "delayed_delivery_count": sum(delay > 300_000 for delay in latencies),
