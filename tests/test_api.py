@@ -46,6 +46,27 @@ def test_search_crud_validation_and_dashboard(tmp_path):
         assert client.delete(f"/api/searches/{id}", headers=headers).status_code == 404
 
 
+def test_dashboard_versions_assets_to_bypass_stale_cdn_cache(tmp_path):
+    import hashlib
+    import re
+
+    with TestClient(
+        create_app(Settings(database=str(tmp_path / "assets.sqlite3")), run_monitor=False)
+    ) as client:
+        dashboard = client.get("/")
+        assert dashboard.headers["cache-control"] == "no-cache"
+        assets = re.findall(r'"(/static/[^"?]+)\?v=([a-f0-9]{12})"', dashboard.text)
+        assert {path for path, _ in assets} == {
+            "/static/app.js",
+            "/static/tracking.js",
+            "/static/style.css",
+        }
+        for path, version in assets:
+            response = client.get(path + "?v=" + version)
+            assert response.status_code == 200
+            assert hashlib.sha256(response.content).hexdigest()[:12] == version
+
+
 def test_auth_and_cross_origin_writes(tmp_path):
     settings = Settings(
         database=str(tmp_path / "secure.sqlite3"),

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -7,7 +8,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
@@ -63,6 +64,13 @@ def _normalize_origin(value: str) -> str | None:
 def create_app(settings: Settings | None = None, run_monitor=True):
     settings = settings or Settings.from_env()
     auth_attempts = {}
+    # Content hashes bypass stale CDN/browser assets without manual version bumps.
+    dashboard_html = (STATIC / "index.html").read_text(encoding="utf-8")
+    for asset in ("app.js", "tracking.js", "style.css"):
+        digest = hashlib.sha256((STATIC / asset).read_bytes()).hexdigest()[:12]
+        dashboard_html = dashboard_html.replace(
+            f'"/static/{asset}"', f'"/static/{asset}?v={digest}"'
+        )
 
     def check_auth_rate_limit(request, scope, maximum, window_seconds):
         key = (scope, request.client.host if request.client else "unknown")
@@ -137,7 +145,7 @@ def create_app(settings: Settings | None = None, run_monitor=True):
 
     @app.get("/", include_in_schema=False)
     async def dashboard():
-        return FileResponse(STATIC / "index.html")
+        return HTMLResponse(dashboard_html, headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/status")
     async def status(request: Request):
