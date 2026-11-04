@@ -123,6 +123,22 @@ def test_mobile_and_telegram_setup(page):
     page.get_by_role("button", name="Cancel", exact=True).click()
 
 
+def test_light_mode_is_saved_and_keeps_mobile_layout(page):
+    page.evaluate('localStorage.removeItem("jw-theme")')
+    page.reload()
+    assert page.locator("html").get_attribute("data-theme") == "dark"
+    page.get_by_role("button", name="Light mode", exact=True).click()
+    assert page.locator("html").get_attribute("data-theme") == "light"
+    assert page.get_by_role("button", name="Dark mode", exact=True).get_attribute(
+        "aria-pressed"
+    ) == "true"
+    assert page.evaluate('localStorage.getItem("jw-theme")') == "light"
+    page.reload()
+    assert page.locator("html").get_attribute("data-theme") == "light"
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
 def test_job_text_cannot_inject_html(page):
     malicious = '<img src=x onerror="window.injected=true">'
     job = {

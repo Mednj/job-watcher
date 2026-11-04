@@ -20,6 +20,8 @@ job before another candidate or captures every listing on a site.
   companies, retry failed Telegram deliveries, and see alert timing. The headline
   timing is the median from discovery to delivery; the all-time 95th percentile
   and count of alerts taking over five minutes expose slow outliers.
+- **Light and dark modes:** switch the dashboard palette from the top bar; the
+  choice is saved in that browser without exposing it to other accounts.
 - **Persistent storage:** searches, source state, job history, user settings, and
   pending deliveries survive container restarts in the data volume.
 - **Application progress:** explicitly opt in after confirming you applied, then

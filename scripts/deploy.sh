@@ -15,8 +15,16 @@ if [[ -n "$("${compose[@]}" ps --status running -q watcher)" ]]; then
   for service in watcher jobteaser-browser; do
     container=$("${compose[@]}" ps -q "$service")
     [[ -n "$container" ]] || { echo "Missing $service; backup aborted" >&2; exit 1; }
-    previous_image=$(docker inspect --format '{{.Image}}' "$container")
-    docker tag "$previous_image" "job-watcher-rollback:$stamp-$service"
+    # .Image is a container image-config digest, which is not always a Docker
+    # image reference that can be tagged. Config.Image is the image reference
+    # used to start the running container; resolve it to a local image ID before
+    # pinning it for rollback.
+    previous_image=$(docker inspect --format '{{.Config.Image}}' "$container")
+    previous_image_id=$(docker image inspect --format '{{.Id}}' "$previous_image") || {
+      echo "Cannot resolve the running $service image ($previous_image); backup aborted" >&2
+      exit 1
+    }
+    docker tag "$previous_image_id" "job-watcher-rollback:$stamp-$service"
   done
   "${compose[@]}" exec -T watcher python - "$stamp" <<'PY'
 import hashlib

@@ -7,6 +7,17 @@ const state = {
   user: null,
   refreshing: false,
 };
+const themePreferenceKey = "jw-theme";
+function setTheme(theme) {
+  const light = theme === "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  document.querySelector('meta[name="theme-color"]').content = light
+    ? "#f5f7f8"
+    : "#10161b";
+  $("theme-toggle").textContent = light ? "Dark mode" : "Light mode";
+  $("theme-toggle").setAttribute("aria-pressed", String(light));
+}
+setTheme(localStorage.getItem(themePreferenceKey) === "light" ? "light" : "dark");
 const esc = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -537,6 +548,11 @@ $("user-list").addEventListener("click", async (event) => {
 $("change-password").addEventListener("click", () =>
   $("password-dialog").showModal(),
 );
+$("theme-toggle").addEventListener("click", () => {
+  const theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  localStorage.setItem(themePreferenceKey, theme);
+  setTheme(theme);
+});
 $("password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
