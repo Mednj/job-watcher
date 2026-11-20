@@ -12,7 +12,7 @@ import pytest
 pytestmark = pytest.mark.skipif(os.getenv("RUN_UI_TESTS") != "1", reason="Opt-in browser checks")
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def ui_server(tmp_path_factory):
     folder = tmp_path_factory.mktemp("dashboard")
     with socket.socket() as sock:
