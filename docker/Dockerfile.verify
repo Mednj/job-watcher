@@ -1,0 +1,14 @@
+# Isolated server verification: synthetic databases, no production mounts or credentials.
+FROM python:3.13-slim
+WORKDIR /verification
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN python -m playwright install --with-deps chromium
+COPY app ./app
+COPY tests ./tests
+COPY pyproject.toml ./
+RUN useradd --create-home verifier
+USER verifier
+ENV RUN_UI_TESTS=1
+CMD ["sh", "-c", "python -m ruff check . --no-cache && python -m pytest -q -p no:cacheprovider"]

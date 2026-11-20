@@ -12,7 +12,7 @@ import pytest
 pytestmark = pytest.mark.skipif(os.getenv("RUN_UI_TESTS") != "1", reason="Opt-in browser checks")
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def ui_server(tmp_path_factory):
     folder = tmp_path_factory.mktemp("dashboard")
     with socket.socket() as sock:
@@ -135,6 +135,46 @@ def test_light_mode_is_saved_and_keeps_mobile_layout(page):
     assert page.evaluate('localStorage.getItem("jw-theme")') == "light"
     page.reload()
     assert page.locator("html").get_attribute("data-theme") == "light"
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_linkedin_pacing_is_visible_without_hiding_source_errors(page):
+    cooling = [True]
+
+    def status(route):
+        data = route.fetch().json()
+        now = time.time()
+        data["sources"] = [{
+            "source": "linkedin", "next_request": now + 600,
+            "gap_seconds": 60, "cooldown_until": now + 600 if cooling[0] else 0,
+            "pacing_status": "cooling_down" if cooling[0] else "recovering",
+        }]
+        data["searches"] = [{
+            "id": 999, "name": "Pacing test", "sources": ["linkedin"],
+            "keywords": "cloud", "location": "France", "contract": "any",
+            "interval_seconds": 30, "exclude_keywords": [], "enabled": True,
+            "initialized": True, "error": "Source access restricted (HTTP 429)",
+            "source_statuses": [{
+                "source": "linkedin", "initialized": True, "last_success": now - 900,
+                "last_count": 3, "last_new": 0, "last_duration_ms": 300,
+                "next_check": now + 300, "error": "Source access restricted (HTTP 429)",
+            }],
+        }]
+        route.fulfill(json=data)
+
+    page.route("**/api/status", status)
+    page.reload()
+    page.get_by_text("Cooling down", exact=True).wait_for()
+    page.get_by_role("button", name="Saved searches").click()
+    page.locator("#searches").get_by_text("Source access restricted (HTTP 429)").wait_for()
+    assert "Requests resume at least 60s apart" in page.locator("#searches").inner_text()
+    cooling[0] = False
+    page.reload()
+    page.get_by_role("button", name="Saved searches").click()
+    page.locator("#searches").get_by_text(
+        "Recovering after rate limiting · requests at least 60s apart."
+    ).wait_for()
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
