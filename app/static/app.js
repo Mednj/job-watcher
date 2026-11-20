@@ -161,14 +161,18 @@ function renderStatus() {
           })),
         errors = searches.filter((x) => x.error),
         latest = Math.max(0, ...searches.map((x) => x.last_success || 0));
-      const badge = errors.length
+      const pacing = s.sources.find((x) => x.source === source);
+      const cooling = searches.length && pacing?.pacing_status === "cooling_down";
+      const badge = cooling
+        ? "Cooling down"
+        : errors.length
         ? "Needs attention"
         : !searches.length
           ? "No searches"
           : !latest
             ? "Starting"
             : "Monitoring";
-      return `<article class="connection">${logo(source)}<div><h3>${sourceName(source)}</h3><p>${searches.length} active ${searches.length === 1 ? "search" : "searches"} · ${latest ? `Last success ${esc(age(latest))}` : "Awaiting first scan"}</p></div><span class="badge ${errors.length ? "warning" : !searches.length ? "idle" : ""}">${badge}</span></article>`;
+      return `<article class="connection">${logo(source)}<div><h3>${sourceName(source)}</h3><p>${searches.length} active ${searches.length === 1 ? "search" : "searches"} · ${latest ? `Last success ${esc(age(latest))}` : "Awaiting first scan"}</p>${searches.length ? pacingDescription(source) : ""}</div><span class="badge ${errors.length || cooling ? "warning" : !searches.length ? "idle" : ""}">${badge}</span></article>`;
     })
     .join("");
   $("telegram-banner").classList.toggle("hidden", s.telegram_configured);
@@ -220,6 +224,16 @@ function renderJobs() {
     })
     .join("");
 }
+function pacingDescription(source) {
+  const pacing = state.status.sources.find((x) => x.source === source);
+  if (pacing?.pacing_status === "cooling_down") {
+    return `<p class="search-error">${sourceName(source)} cooling down until ${esc(date(pacing.cooldown_until))}. Requests resume at least ${Math.ceil(pacing.gap_seconds)}s apart.</p>`;
+  }
+  if (pacing?.pacing_status === "recovering") {
+    return `<p>Recovering after rate limiting · requests at least ${Math.ceil(pacing.gap_seconds)}s apart.</p>`;
+  }
+  return "";
+}
 function renderSearches() {
   const searches = state.status.searches;
   $("searches").innerHTML = searches.length
@@ -228,7 +242,7 @@ function renderSearches() {
           const health = s.source_statuses
             .map(
               (t) =>
-                `<div class="search-health"><b>${sourceName(t.source)}</b> · ${!s.enabled ? "Paused" : t.error ? "Needs attention" : t.initialized ? "Watching" : "First scan pending"}<br>Last success: ${esc(date(t.last_success))} · ${t.last_count} matches · ${t.last_new} new alerts${t.last_duration_ms != null ? ` · ${(t.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(t.next_check, state.status.sources.find((x) => x.source === t.source)?.next_request || 0)))}` : ""}${t.error ? `<p class="search-error">${esc(t.error)}</p>` : ""}</div>`,
+                `<div class="search-health"><b>${sourceName(t.source)}</b> · ${!s.enabled ? "Paused" : t.error ? "Needs attention" : t.initialized ? "Watching" : "First scan pending"}<br>Last success: ${esc(date(t.last_success))} · ${t.last_count} matches · ${t.last_new} new alerts${t.last_duration_ms != null ? ` · ${(t.last_duration_ms / 1000).toFixed(2)}s scan` : ""}<br>${s.enabled ? `Next eligible check: ${esc(date(Math.max(t.next_check, state.status.sources.find((x) => x.source === t.source)?.next_request || 0)))}` : ""}${t.error ? `<p class="search-error">${esc(t.error)}</p>` : ""}${s.enabled ? pacingDescription(t.source) : ""}</div>`,
             )
             .join("");
           return `<article class="search-card"><div class="search-card-head">${s.sources.map(logo).join("")}<div><h3>${esc(s.name)}</h3><span class="muted">${s.sources.map(sourceName).join(" + ")}</span></div><span class="badge ${s.error ? "warning" : !s.enabled ? "idle" : ""}">${!s.enabled ? "Paused" : s.error ? "Needs attention" : s.initialized ? "Watching" : "Starting"}</span></div><p class="search-detail"><b>${esc(s.keywords)}</b> · ${esc(s.location)} · ${esc(s.contract === "any" ? "Any contract" : s.contract)} · Every ${s.interval_seconds}s${s.exclude_keywords.length ? `<br>Excluding: ${esc(s.exclude_keywords.join(", "))}` : ""}</p>${health}<div class="button-row"><button class="secondary" data-search-action="check" data-id="${s.id}" ${!s.enabled ? "disabled" : ""}>Check all websites</button><button class="secondary" data-search-action="toggle" data-id="${s.id}">${s.enabled ? "Pause" : "Resume"}</button><button class="text-button" data-search-action="edit" data-id="${s.id}">Edit</button><button class="text-button" data-search-action="delete" data-id="${s.id}">Remove</button></div></article>`;
