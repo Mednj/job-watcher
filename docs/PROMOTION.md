@@ -3,6 +3,9 @@
 `main` remains the production branch. Creating development branches does not
 restart or replace the production app. The existing production deployment gate,
 runner label, backup script, and production environment stay in place.
+The requested `prod` branch initially points to the same baseline as `main`.
+It is a reference branch only: pushes to `prod` do not deploy. Moving production
+deployment from `main` to `prod` is a separate migration, not part of this change.
 
 Promotion order: feature branch -> `dev` -> `test` -> `pre-prod` -> `main`.
 Use pull requests and promote only a passing candidate. These are Git branches,
