@@ -70,6 +70,10 @@ class Store:
             CREATE TABLE IF NOT EXISTS source_state (
                 source TEXT PRIMARY KEY, next_request REAL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS source_pacing (
+                source TEXT PRIMARY KEY, gap_seconds REAL NOT NULL,
+                successes INTEGER NOT NULL DEFAULT 0, cooldown_until REAL NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS user_bans (
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 name TEXT NOT NULL, normalized TEXT NOT NULL, created_at REAL NOT NULL,
@@ -454,6 +458,25 @@ class Store:
             "SELECT next_request FROM source_state WHERE source=?", (source,)
         ).fetchone()
         return row[0] if row else 0
+
+    def source_pacing(self, source, minimum):
+        row = self.db.execute(
+            "SELECT gap_seconds,successes,cooldown_until FROM source_pacing WHERE source=?",
+            (source,),
+        ).fetchone()
+        return (
+            {**dict(row), "gap_seconds": max(minimum, row["gap_seconds"])}
+            if row else {"gap_seconds": minimum, "successes": 0, "cooldown_until": 0}
+        )
+
+    def save_source_pacing(self, source, gap, successes, cooldown_until):
+        with self.db:
+            self.db.execute(
+                "INSERT INTO source_pacing VALUES (?,?,?,?) "
+                "ON CONFLICT(source) DO UPDATE SET gap_seconds=excluded.gap_seconds,"
+                "successes=excluded.successes,cooldown_until=excluded.cooldown_until",
+                (source, gap, successes, cooldown_until),
+            )
 
     def set_source_ready(self, source, timestamp):
         with self.db:
