@@ -1,9 +1,9 @@
 name: CI and deploy
 on:
   push:
-    branches: [main]
+    branches: [main, dev, test, pre-prod, 'codex/**']
   pull_request:
-    branches: [main]
+    branches: [main, dev, test, pre-prod]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,3 +62,19 @@ jobs:
           persist-credentials: false
       - name: Deploy and verify health
         run: bash scripts/deploy.sh
+  preprod:
+    name: Isolated verification on home server
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/pre-prod'
+    runs-on: [self-hosted, Linux, X64, job-watcher]
+    timeout-minutes: 60
+    environment: pre-production
+    steps:
+      - name: Check out candidate separately from production
+        uses: actions/checkout@v4
+        with:
+          path: pre-production
+          persist-credentials: false
+      - name: Run offline tests and ephemeral app health check
+        working-directory: pre-production
+        run: bash scripts/verify-preprod.sh
