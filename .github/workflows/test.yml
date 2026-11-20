@@ -64,7 +64,6 @@ jobs:
         run: bash scripts/deploy.sh
   preprod:
     name: Isolated verification on home server
-    needs: test
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/pre-prod'
     runs-on: [self-hosted, Linux, X64, job-watcher]
     timeout-minutes: 60

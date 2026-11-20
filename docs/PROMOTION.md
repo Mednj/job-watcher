@@ -14,8 +14,10 @@ into `main` until server verification has passed and production promotion is aut
 
 - `dev`: integration and hosted lint, backend/UI tests, and Docker builds.
 - `test`: release candidate with the same hosted checks.
-- `pre-prod`: hosted checks followed by isolated verification on the existing
+- `pre-prod`: hosted checks alongside isolated verification on the existing
   dedicated Job Watcher server runner, using the `pre-production` environment.
+  Both must pass before production promotion. The server job runs the full test
+  suite itself; hosted dependency installation does not block its start.
 - `main`: existing production CI/deployment workflow; `DEPLOYMENT_ENABLED` and
   the `production` environment still control deployment.
 
