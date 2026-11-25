@@ -178,6 +178,18 @@ to run headless tests without downloading Chromium.
 
 ## Multiple websites per search
 
+Career Polytech (`https://career.polytech.network/`) is available as a separate
+source. It uses the site's public offer-list endpoint, with France and native
+Stage, Alternance, CDI or CDD filters, and reads the first 12 results per check.
+Results follow the site's ranking; offers outside that window may be missed.
+Title keywords, excluded terms, contract labels and city matching are checked
+locally. Experience and Freelance filters are unsupported and report an error.
+Offer viewing is public; applying or accessing contact details may require a
+Polytech account. No login or credentials are used by the adapter. Missing cards,
+malformed replies, access restrictions and incomplete result windows report
+errors rather than a successful empty scan. Existing saved searches retain their
+selected sources; edit a search to enable Career Polytech.
+
 Select any available sources for a search. Criteria are shared; each platform
 has independent status, scheduling, and backoff. Check now requests an immediate
 check of selected sources. Adding a platform starts its first scan; removing one

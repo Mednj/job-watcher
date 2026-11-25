@@ -16,7 +16,7 @@ const trackingState = {
 };
 const applicationLabel = (value) => applicationStatuses[value] || value;
 const trackingUrl = (value) =>
-  /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr|www\.jobteaser\.com)\//.test(
+  /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr|www\.jobteaser\.com|career\.polytech\.network)\//.test(
     value,
   )
     ? value

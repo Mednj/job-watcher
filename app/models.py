@@ -16,6 +16,7 @@ Source = Literal[
     "monster",
     "wttj",
     "francetravail",
+    "polytech",
 ]
 SOURCES = (
     "linkedin",
@@ -27,6 +28,7 @@ SOURCES = (
     "monster",
     "wttj",
     "francetravail",
+    "polytech",
 )
 
 
@@ -150,7 +152,10 @@ class Job:
             matched = bool(terms) and all(
                 re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", title) for term in terms
             )
-        if self.source in ("hellowork", "wttj", "francetravail") and search.contract != "any":
+        if (
+            self.source in ("hellowork", "wttj", "francetravail", "polytech")
+            and search.contract != "any"
+        ):
             matched = matched and normalize(self.contract) == normalize(search.contract)
         return bool(matched)
 
