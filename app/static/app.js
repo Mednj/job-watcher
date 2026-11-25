@@ -36,6 +36,7 @@ const sourceNames = {
   monster: "Monster",
   wttj: "Welcome to the Jungle",
   francetravail: "France Travail (Pôle emploi)",
+  polytech: "Career Polytech",
 };
 const sources = Object.keys(sourceNames);
 const sourceName = (source) => sourceNames[source] || source;
@@ -215,7 +216,7 @@ function renderJobs() {
     .map((job) => {
       const badge = badges[job.status] || ["Unknown", "idle"];
       const safeUrl =
-        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr|www\.jobteaser\.com)\//.test(
+        /^https:\/\/(www\.linkedin\.com|www\.hellowork\.com|www\.welcometothejungle\.com|candidat\.francetravail\.fr|www\.jobteaser\.com|career\.polytech\.network)\//.test(
           job.url,
         )
           ? job.url
