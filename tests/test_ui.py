@@ -123,6 +123,25 @@ def test_mobile_and_telegram_setup(page):
     page.get_by_role("button", name="Cancel", exact=True).click()
 
 
+def test_polytech_can_be_saved_edited_and_filtered(page):
+    page.get_by_role("button", name="＋ New search", exact=True).first.click()
+    page.locator("#search-name").fill("Polytech search")
+    page.locator("#search-keywords").fill("cloud")
+    page.locator("#search-linkedin").uncheck()
+    page.locator("#search-hellowork").uncheck()
+    page.get_by_label("Career Polytech", exact=True).check()
+    page.locator("#search-enabled").uncheck()
+    page.get_by_role("button", name="Save search", exact=True).click()
+    page.get_by_role("button", name="Saved searches").click()
+    page.get_by_role("heading", name="Polytech search", exact=True).wait_for()
+    page.get_by_role("button", name="Edit", exact=True).click()
+    assert page.locator("#search-polytech").is_checked()
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    page.get_by_role("button", name="Opportunity radar").click()
+    page.locator("#source-filter").select_option("polytech")
+    assert page.locator("#source-filter").input_value() == "polytech"
+
+
 def test_light_mode_is_saved_and_keeps_mobile_layout(page):
     page.evaluate('localStorage.removeItem("jw-theme")')
     page.reload()
