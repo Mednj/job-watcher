@@ -1,5 +1,7 @@
 import asyncio
 import re
+import time
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -10,9 +12,20 @@ from app.models import Job, SearchInput
 
 
 class SourceError(Exception):
-    def __init__(self, message: str, retry_after: float | None = None):
+    def __init__(self, message: str, retry_after: float | None = None, *, status_code=None):
         super().__init__(message)
         self.retry_after = retry_after
+        self.status_code = status_code
+
+
+def restriction_delay(value):
+    """Retry-After supports both whole seconds and an HTTP date."""
+    if value.isdigit():
+        return max(1, int(value))
+    try:
+        return max(1, parsedate_to_datetime(value).timestamp() - time.time())
+    except (ValueError, TypeError, OverflowError):
+        return 300
 
 
 def text(node, selector: str) -> str:
@@ -128,10 +141,11 @@ async def fetch_jobs(client: httpx.AsyncClient, search: SearchInput) -> list[Job
     except httpx.HTTPError:
         raise SourceError("Source request failed or timed out") from None
     if response.status_code in (403, 429, 999):
-        retry = response.headers.get("retry-after", "")
+        retry = response.headers.get("retry-after", "").strip()
         raise SourceError(
             f"Source access restricted (HTTP {response.status_code}); monitoring will back off",
-            float(retry) if retry.isdigit() else 300,
+            restriction_delay(retry),
+            status_code=response.status_code,
         )
     if response.status_code != 200:
         raise SourceError(f"Source returned HTTP {response.status_code}")

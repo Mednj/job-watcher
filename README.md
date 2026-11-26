@@ -40,6 +40,7 @@ treated as a successful search with zero results.
 | HelloWork | Available | Public search results; currently reads the newest result page. |
 | Welcome to the Jungle | Available | Public search endpoint; returns a limited ranked result window. |
 | France Travail | Available | Public search; currently reads up to 20 results per check. |
+| Career Polytech | Available | Public offers, France and native contract filters; first 12 results per check. |
 | JobTeaser | Experimental browser adapter | Uses the dedicated Chromium profile in Compose; scans up to five pages by default. Challenges must be handled manually. |
 | APEC, Indeed, Glassdoor, Monster | Unavailable placeholders | No approved search feed is configured. Current direct access tests were denied or challenged; selecting these sources reports an availability error. |
 

@@ -96,6 +96,18 @@ global 15-second minimum gap across searches. Many searches can delay a check.
 Temporary source failures back off exponentially. HTTP 403/429/999 and upstream
 rate limits apply a platform-wide cooldown; **Check now** respects that cooldown.
 Challenge pages and unexpected HTML are reported as errors, never zero results.
+LinkedIn also retains adaptive pacing across restarts. An HTTP 429 doubles its
+shared request gap from the configured minimum (normally 15 seconds), up to
+120 seconds, without reducing a higher configured minimum. All LinkedIn searches
+and accounts share that gap and cooldown; their job data remains private.
+After the cooldown, eight consecutive successful requests reduce the gap by 25%,
+with further groups of eight gradually restoring the minimum. A failed request
+resets the success streak. Retry-After seconds or HTTP dates are respected; a
+missing or invalid value defaults to five minutes, and existing search backoff
+can wait longer. Manual checks and restarts cannot bypass the cooldown.
+The dashboard shows cooling down, its end time, and the recovery request gap.
+Search intervals remain unchanged; pacing can delay their actual execution.
+This reduces repeated rate limiting but cannot guarantee LinkedIn access.
 No login sessions, CAPTCHA bypass, or proxy rotation are implemented. Public
 HTML endpoints may change or restrict automated access.
 
@@ -165,6 +177,18 @@ Alternatively, set `BROWSER_EXECUTABLE` to an installed Chrome or Edge executabl
 to run headless tests without downloading Chromium.
 
 ## Multiple websites per search
+
+Career Polytech (`https://career.polytech.network/`) is available as a separate
+source. It uses the site's public offer-list endpoint, with France and native
+Stage, Alternance, CDI or CDD filters, and reads the first 12 results per check.
+Results follow the site's ranking; offers outside that window may be missed.
+Title keywords, excluded terms, contract labels and city matching are checked
+locally. Experience and Freelance filters are unsupported and report an error.
+Offer viewing is public; applying or accessing contact details may require a
+Polytech account. No login or credentials are used by the adapter. Missing cards,
+malformed replies, access restrictions and incomplete result windows report
+errors rather than a successful empty scan. Existing saved searches retain their
+selected sources; edit a search to enable Career Polytech.
 
 Select any available sources for a search. Criteria are shared; each platform
 has independent status, scheduling, and backoff. Check now requests an immediate

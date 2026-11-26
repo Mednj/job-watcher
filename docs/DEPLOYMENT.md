@@ -1,5 +1,8 @@
 # Server deployment and CI/CD
 
+Development branches and isolated server validation are described in
+[promotion workflow](PROMOTION.md). `main` remains the production branch.
+
 Pushes to main run lint, all tests (including browser UI tests), and both Docker image builds on GitHub-hosted runners for pull requests and on the dedicated server runner for trusted main commits. Once the repository variable `DEPLOYMENT_ENABLED` is set to `true` after server provisioning, only a successful main-branch run deploys, using a dedicated self-hosted runner labelled `job-watcher`. Pull requests never run on that server runner. Workflow dispatch can redeploy main.
 
 The production server needs Docker Compose v2, Git, outbound HTTPS, the runner service and `/etc/job-watcher.env` readable only by the deployment account. The public repository contains no credentials or browser profiles. Keep repository write access restricted to trusted maintainers; the deployment runner has Docker access.

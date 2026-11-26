@@ -168,7 +168,7 @@ def create_app(settings: Settings | None = None, run_monitor=True):
             "summary": store.summary(user_id),
             "searches": searches,
             "sources": [
-                {"source": source, "next_request": store.source_ready_at(source)}
+                monitor.source_status(source)
                 for source in SOURCES
             ],
         }

@@ -7,6 +7,7 @@ import httpx
 
 from app.config import Settings
 from app.models import SOURCES, SearchInput
+from app.pacing import recovered, restricted
 from app.sources import SourceError, fetch_jobs
 from app.store import Store
 from app.telegram import DeliveryError, Telegram, format_message
@@ -61,11 +62,20 @@ class Monitor:
             new = self.store.record_scan(
                 search["id"], config, jobs, (time.perf_counter() - start) * 1000
             )
+            if config.source == "linkedin":
+                pacing = self.store.source_pacing(config.source, self.settings.source_gap)
+                gap, successes = recovered(
+                    pacing["gap_seconds"], pacing["successes"], self.settings.source_gap
+                )
+                self.store.save_source_pacing(config.source, gap, successes, 0)
             if new:
                 self.wake_delivery.set()
         except SourceError as exc:
             current = self.store.search(search["id"])
-            delay = max(exc.retry_after or 0, config.interval_seconds * 2)
+            retry_after = exc.retry_after
+            if config.source == "linkedin" and exc.status_code == 429:
+                retry_after = max(1, retry_after if retry_after is not None else 300)
+            delay = max(retry_after or 0, config.interval_seconds * 2)
             if (
                 current
                 and current["enabled"]
@@ -73,13 +83,28 @@ class Monitor:
                 and SearchInput.model_validate(current).for_source(config.source) == config
             ):
                 delay = self.store.record_failure(
-                    search["id"], str(exc), exc.retry_after, config.source
+                    search["id"], str(exc), retry_after, config.source
                 )
             # A platform restriction applies to all searches on that source.
-            if exc.retry_after:
-                self.store.set_source_ready(config.source, time.time() + delay)
+            if retry_after:
+                ready = max(self.store.source_ready_at(config.source), time.time() + delay)
+                self.store.set_source_ready(config.source, ready)
+                if config.source == "linkedin" and exc.status_code == 429:
+                    pacing = self.store.source_pacing(config.source, self.settings.source_gap)
+                    gap = restricted(pacing["gap_seconds"], self.settings.source_gap)
+                    self.store.save_source_pacing(config.source, gap, 0, ready)
+            if config.source == "linkedin" and exc.status_code != 429:
+                pacing = self.store.source_pacing(config.source, self.settings.source_gap)
+                self.store.save_source_pacing(
+                    config.source, pacing["gap_seconds"], 0, pacing["cooldown_until"]
+                )
         except Exception:
             logger.error("Unexpected source error; search id=%s", search["id"])
+            if config.source == "linkedin":
+                pacing = self.store.source_pacing(config.source, self.settings.source_gap)
+                self.store.save_source_pacing(
+                    config.source, pacing["gap_seconds"], 0, pacing["cooldown_until"]
+                )
             current = self.store.search(search["id"])
             if (
                 current
@@ -97,9 +122,28 @@ class Monitor:
                 config.source,
                 max(
                     self.store.source_ready_at(config.source),
-                    time.time() + self.settings.source_gap,
+                    time.time() + self.source_status(config.source)["gap_seconds"],
                 ),
             )
+
+    def source_status(self, source):
+        pacing = (
+            self.store.source_pacing(source, self.settings.source_gap)
+            if source == "linkedin"
+            else {"gap_seconds": self.settings.source_gap, "cooldown_until": 0}
+        )
+        cooldown = pacing["cooldown_until"]
+        return {
+            "source": source,
+            "next_request": max(self.store.source_ready_at(source), cooldown),
+            "gap_seconds": pacing["gap_seconds"],
+            "cooldown_until": cooldown,
+            "pacing_status": (
+                "cooling_down" if cooldown > time.time()
+                else "recovering" if pacing["gap_seconds"] > self.settings.source_gap
+                else "normal"
+            ),
+        }
 
     async def source_loop(self, source):
         while True:
@@ -110,7 +154,7 @@ class Monitor:
                     for s in self.store.searches_for_source(source)
                     if s["source"] == source and s["enabled"] and s["next_check"] <= now
                 ]
-                if candidates and self.store.source_ready_at(source) <= now:
+                if candidates and self.source_status(source)["next_request"] <= now:
                     await self.scan(min(candidates, key=lambda s: (s["next_check"], s["id"])))
             except Exception:
                 logger.error("Source worker error; source=%s", source)

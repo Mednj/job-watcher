@@ -100,6 +100,10 @@ def parse_francetravail(html):
 
 
 async def fetch_extended(client, search: SearchInput):
+    if search.source == "polytech":
+        from app.polytech import fetch_polytech
+
+        return await fetch_polytech(client, search)
     if search.source == "jobteaser":
         from app.jobteaser_browser import fetch_browser
 
