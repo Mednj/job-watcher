@@ -11,11 +11,33 @@ from app.models import Job, SearchInput, normalize
 
 
 class Store:
+    # Only the owning account's linked searches can authorize an old queued offer.
+    # Deleted searches retain their historical behavior; broader searches still qualify.
+    INTERNSHIP_ELIGIBLE = """(
+        NOT EXISTS (
+            SELECT 1 FROM search_jobs sj JOIN searches s ON s.id=sj.search_id
+            WHERE sj.job_key=jobs.key AND s.user_id=state.user_id
+            AND json_extract(s.config, '$.contract')='Stage'
+        ) OR EXISTS (
+            SELECT 1 FROM search_jobs sj JOIN searches s ON s.id=sj.search_id
+            WHERE sj.job_key=jobs.key AND s.user_id=state.user_id
+            AND (COALESCE(json_extract(s.config, '$.contract'),'any')!='Stage'
+                 OR matches_internship_search(jobs.payload,s.config))
+        )
+    )"""
+
+    @staticmethod
+    def _matches_internship_search(payload, config):
+        return Job(**json.loads(payload)).matches(SearchInput.model_validate_json(config))
+
     def __init__(self, path: str, bootstrap_password="", telegram_token="", telegram_chat_id=""):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.create_function("normalize_company", 1, normalize, deterministic=True)
+        self.db.create_function(
+            "matches_internship_search", 2, self._matches_internship_search, deterministic=True
+        )
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         # `jobs` is shared across accounts, so it is safe to copy its legacy delivery
@@ -496,7 +518,11 @@ class Store:
             or SearchInput.model_validate(current).for_source(config.source) != config
         ):
             return 0
-        jobs = [job for job in jobs if not self.is_banned(job.company, current["user_id"])]
+        jobs = [
+            job for job in jobs
+            if not self.is_banned(job.company, current["user_id"])
+            and (config.contract != "Stage" or job.matches(config))
+        ]
         now = time.time()
         new_count = 0
         with self.db:
@@ -578,7 +604,9 @@ class Store:
         data["tracked"] = bool(data.get("tracked", False))
         return data
 
-    def jobs(self, limit=100, source=None, status=None, query=None, user_id=1):
+    def jobs(
+        self, limit=100, source=None, status=None, query=None, user_id=1, include_unmatched=False
+    ):
         clauses, params = (
             [
                 "NOT EXISTS (SELECT 1 FROM user_bans b WHERE b.user_id=? "
@@ -595,6 +623,13 @@ class Store:
         if query:
             clauses.append("jobs.payload LIKE ?")
             params.append("%" + query + "%")
+        if not include_unmatched and status != "baseline":
+            # Keep applied/tracked offers accessible, and preserve hidden records in history.
+            clauses.append(
+                "(state.applied=1 OR EXISTS (SELECT 1 FROM application_tracking t "
+                "WHERE t.user_id=state.user_id AND t.job_key=jobs.key AND t.active=1) OR "
+                + self.INTERNSHIP_ELIGIBLE + ")"
+            )
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = self.db.execute(
             "SELECT jobs.key,jobs.source,jobs.payload,state.detected_at AS first_seen,"
@@ -765,7 +800,8 @@ class Store:
             "SELECT jobs.key,jobs.source,jobs.payload,state.detected_at AS first_seen,"
             "state.last_seen,state.status,state.attempts,state.next_attempt,state.sent_at,"
             "state.delivery_ms,state.error,"
-            "state.applied,state.user_id,users.telegram_token,users.telegram_chat_id "
+            "state.applied,state.user_id,users.telegram_token,users.telegram_chat_id,"
+            + self.INTERNSHIP_ELIGIBLE + " AS internship_eligible "
             "FROM user_job_state state JOIN jobs ON jobs.key=state.job_key "
             "JOIN users ON users.id=state.user_id WHERE state.status='pending' "
             "AND state.next_attempt<=? AND users.active=1 "
@@ -773,7 +809,15 @@ class Store:
             + "ORDER BY state.detected_at,jobs.key",
             (time.time(),),
         )
-        for row in rows:
+        for row in list(rows):
+            if not row["internship_eligible"]:
+                with self.db:
+                    self.db.execute(
+                        "UPDATE user_job_state SET status='baseline',error=? "
+                        "WHERE user_id=? AND job_key=? AND status='pending'",
+                        ("No longer matches your internship searches", row["user_id"], row["key"]),
+                    )
+                continue
             job = self.decode_job(row)
             job["user_id"] = row["user_id"]
             job["telegram_token"] = row["telegram_token"]

@@ -180,8 +180,11 @@ def create_app(settings: Settings | None = None, run_monitor=True):
         source: Source | None = None,
         status: Literal["baseline", "pending", "sent", "failed"] | None = None,
         q: str | None = Query(default=None, max_length=200),
+        include_unmatched: bool = False,
     ):
-        jobs = request.app.state.store.jobs(limit, source, status, q, request.state.user["id"])
+        jobs = request.app.state.store.jobs(
+            limit, source, status, q, request.state.user["id"], include_unmatched
+        )
         for job in jobs:
             job.pop("user_id", None)
         return jobs

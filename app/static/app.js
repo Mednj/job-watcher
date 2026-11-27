@@ -261,7 +261,8 @@ async function refresh() {
     const params = new URLSearchParams({ limit: "100" });
     if ($("source-filter").value)
       params.set("source", $("source-filter").value);
-    if (state.filter) params.set("status", state.filter);
+    if (state.filter === "history") params.set("include_unmatched", "true");
+    else if (state.filter) params.set("status", state.filter);
     if ($("job-query").value.trim())
       params.set("q", $("job-query").value.trim());
     const [status, jobs] = await Promise.all([

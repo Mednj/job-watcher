@@ -123,6 +123,19 @@ def test_mobile_and_telegram_setup(page):
     page.get_by_role("button", name="Cancel", exact=True).click()
 
 
+def test_all_history_requests_retained_unmatched_offers(page):
+    requested = []
+
+    def jobs(route):
+        requested.append(route.request.url)
+        route.fulfill(json=[])
+
+    page.route("**/api/jobs?*", jobs)
+    with page.expect_response(lambda response: "include_unmatched=true" in response.url):
+        page.get_by_role("button", name="All history", exact=True).click()
+    assert any("include_unmatched=true" in url for url in requested)
+
+
 def test_polytech_can_be_saved_edited_and_filtered(page):
     page.get_by_role("button", name="＋ New search", exact=True).first.click()
     page.locator("#search-name").fill("Polytech search")
