@@ -52,6 +52,19 @@ The app does not poll `getUpdates` or register a webhook.
   classification. A selected contract is added to the search keywords. The alert
   shows **Not listed** for contract information instead of inventing a contract.
   LinkedIn experience filters use its own entry/experienced categories.
+- Stage searches also require local internship evidence on every source: an
+  internship contract label, or an explicit Stage/Stagiaire/Intern/Internship/PFE
+  title when the contract is unknown. Known other contracts and explicit senior,
+  lead, principal, staff, confirmé or expérimenté titles are rejected. This is a
+  conservative title/metadata check, not full-description classification; offers
+  with insufficient evidence can be missed. Other contract searches are unchanged.
+  Queued offers are rechecked against the owning account's linked searches;
+  mismatches confined to Stage searches become Previously skipped. Those offers
+  are hidden from the normal radar but remain stored and can be reviewed under
+  Previously skipped. Applied/tracked offers stay accessible. A broader linked
+  search in the same account can still qualify an offer; another account cannot.
+  All history shows retained offers, including older deliveries that no longer
+  match the current internship criteria, without overriding company bans.
 - `IT` maps to `informatique` on HelloWork and a broader OR query (informatique,
   IT, cloud, DevOps, data, software, cybersécurité) on LinkedIn. Other keyword
   text is sent to each site's search engine. The returned titles must contain

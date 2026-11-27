@@ -106,6 +106,28 @@ class Job:
         if any(normalize(keyword) in text for keyword in search.exclude_keywords):
             return False
         title = normalize(self.title)
+        if search.contract == "Stage":
+            contract = normalize(self.contract)
+            internship_label = contract in ("stage", "internship", "intern", "traineeship")
+            unknown_contract = contract in ("", "not listed", "unknown", "non renseigne")
+            internship_title = re.search(
+                r"(?<!\w)(?:stage|stagiaire|internship|intern|pfe)(?!\w)", title
+            )
+            senior_title = re.search(
+                r"(?<!\w)(?:senior|sr\.?|lead|principal|staff|confirme|experimente)(?!\w)",
+                title,
+            )
+            other_contract_title = re.search(
+                r"(?<!\w)(?:cdi|cdd|freelance|contractor|alternance|apprenticeship)(?!\w)",
+                title,
+            )
+            # Guest search results can ignore the requested contract. Unknown
+            # contracts need explicit internship evidence; contradictory labels fail closed.
+            if senior_title or not (
+                internship_label
+                or (unknown_contract and internship_title and not other_contract_title)
+            ):
+                return False
         keyword = normalize(search.keywords)
         if keyword == "it":
             terms = (
@@ -154,7 +176,7 @@ class Job:
             )
         if (
             self.source in ("hellowork", "wttj", "francetravail", "polytech")
-            and search.contract != "any"
+            and search.contract not in ("any", "Stage")
         ):
             matched = matched and normalize(self.contract) == normalize(search.contract)
         return bool(matched)
